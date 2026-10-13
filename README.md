@@ -1,4 +1,4 @@
-<p align="center"><img src="port/packaging/icon/tlg-icon-1024.png" width="128" alt=""></p>
+<p align="center"><img src="port/packaging/icon/tlg-icon-1024.png" width="160" alt=""></p>
 
 <h1 align="center">The Last Guardian — port nativo para PC</h1>
 
@@ -11,7 +11,7 @@
 
 <p align="center"><a href="https://github.com/HayatoG/tlg_pc/actions/workflows/build.yml"><img src="https://github.com/HayatoG/tlg_pc/actions/workflows/build.yml/badge.svg" alt="Build"></a></p>
 
-**The Last Guardian** (PS4, CUSA03627, update 01.03) rodando no PC com imagem, som, controle e saves, a 30 FPS estáveis e sem emulador de CPU. O código original do jogo roda nativo no processador. O sistema do PS4 é reimplementado, e a GPU é traduzida para Vulkan.
+**The Last Guardian** (PS4, CUSA03627, update 01.03) rodando no PC com imagem, som, controle, mouse e teclado e saves, a 30 FPS estáveis (60 FPS e FPS livre opcionais, experimentais) e sem emulador de CPU. O código original do jogo roda nativo no processador. O sistema do PS4 é reimplementado, e a GPU é traduzida para Vulkan.
 
 > **Nenhum arquivo do jogo vem com este projeto.** Para jogar, você precisa da sua própria cópia, tirada do seu PS4.
 
@@ -24,16 +24,28 @@ Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) 
 
 <sub>Capturas na resolução nativa (1920×1080), direto da GPU, no Linux com uma RTX 2060.</sub>
 
+## Novidades
+
+- **60 FPS e FPS livre (experimental):** launcher → Vídeo → "Taxa de quadros (experimental)", ou `TLG_FPS=30|60|unlocked`. O padrão continua 30 FPS, como no PS4. Detalhes em [`docs/60fps.md`](docs/60fps.md) ([#5](https://github.com/HayatoG/tlg_pc/issues/5)).
+- **Filtros de imagem:** anti-aliasing SMAA, nitidez RCAS (FSR 1) ou CAS (AMD) e ajustes de cor (brilho, contraste, saturação, gama), no launcher e ao vivo no menu do jogo (Insert → Imagem) ([#2](https://github.com/HayatoG/tlg_pc/issues/2)).
+- **Mouse e teclado:** o mouse gira a câmera (sensibilidade e eixo Y invertido no launcher) e as teclas e botões do mouse podem ser remapeados ([#8](https://github.com/HayatoG/tlg_pc/issues/8)).
+- **Sensor de movimento:** o giroscópio do DualShock 4/DualSense funciona direto. Em controles sem sensor, um toque em Share (ou L3+R3) liga o "modo sensor": o analógico esquerdo inclina o controle e X/A sacode. No teclado, T/G inclinam e Y sacode.
+- **Analógicos:** zona morta de 10% contra drift (`TLG_STICK_DEADZONE`), e o último controle usado é o que vale.
+- **Touchpad sem touchpad:** segure View/Select (ou Tab) e mova o analógico direito (ou as setas) para deslizar o dedo; um toque rápido continua sendo clique.
+- **Desempenho:** o FPS não cai mais com o tempo (as variantes de shader agora se repetem), e transições parciais de imagem repetidas são puladas.
+- **Cache de shaders automático:** a pasta do cache leva a versão do tradutor de shaders, e o cache antigo é apagado sozinho depois de uma atualização.
+
 ## Status
 
 | Área | Estado |
 |---|---|
 | Boot, menu, intro e gameplay | ✅ Funciona; sessões de 10+ minutos sem falhas |
-| Imagem | ✅ Nativa, 1080p, sem tremores |
+| Imagem | ✅ Nativa, 1080p, sem tremores; SMAA, RCAS/CAS e ajustes de cor opcionais |
 | Áudio | ✅ Com o `libSceNgs2.sprx` do firmware do seu console |
-| Controle | ✅ DualSense, DualShock 4, Xbox e 8BitDo via SDL3, com hot-plug |
+| Controle | ✅ DualSense, DualShock 4, Xbox e 8BitDo via SDL3, com hot-plug; sensor de movimento real ou simulado |
+| Mouse e teclado | ✅ Câmera no mouse e remapeamento no launcher |
 | Saves | ✅ Autosave e Continuar |
-| Desempenho | ✅ 30 FPS travados, como no PS4 ([60 FPS: #5](https://github.com/HayatoG/tlg_pc/issues/5)) |
+| Desempenho | ✅ 30 FPS, como no PS4; 🧪 60 FPS e livre opcionais, em teste ([#5](https://github.com/HayatoG/tlg_pc/issues/5)) |
 | Linux | ✅ Testado (Nobara/Fedora 44) |
 | Windows | 🧪 Build automático, ainda sem teste em jogo |
 | macOS (Apple Silicon) | 📋 Planejado ([#1](https://github.com/HayatoG/tlg_pc/issues/1)) |
@@ -70,12 +82,14 @@ Tudo vem do **seu** PS4 (GoldHEN + Itemzflow). Nada disso vai no download. Use *
 2. No PC, copie a pasta do jogo base e depois copie o conteúdo do update **por cima**, substituindo os arquivos (`eboot.bin`, `sce_module/`, `sce_sys/`).
 3. Confira os tamanhos. Arquivos acima de 4 GB vindos pelo FTP do GoldHEN 2.2 chegam cortados, então use o pendrive.
 
+A lista completa, que também vai nas notas de cada Release, está em [`docs/ARQUIVOS_NECESSARIOS.md`](docs/ARQUIVOS_NECESSARIOS.md).
+
 **PC:** placa de vídeo com Vulkan 1.3 (6 GB de VRAM recomendados) e ~25 GB livres.
 
 ## Como jogar
 
 1. Extraia o pacote e coloque o `libSceNgs2.sprx` na pasta `system_lib/`.
-2. Abra o **The Last Guardian**, escolha a pasta do jogo e o idioma (inglês, português, espanhol ou francês) e clique em **Jogar**.
+2. Abra o **The Last Guardian**, escolha a pasta do jogo e o idioma (inglês, português, espanhol ou francês) e, se quiser, a taxa de quadros e os filtros de imagem. Clique em **Jogar**.
 3. No jogo, **F10** liga o contador de FPS, e **Insert** (ou R3 + L2 no controle) abre o menu do port.
 4. Controle (PS4/PS5, Xbox) ou teclado e mouse: o mouse gira a câmera, **Esc** solta o mouse e um clique prende de novo. O layout e o remapeamento estão no [`README-player.md`](port/packaging/README-player.md) e na caixa **Controles** do launcher.
 
@@ -103,7 +117,7 @@ Os detalhes técnicos (achados no Ghidra, bugs resolvidos, opções `TLG_*`) est
 
 ## Próximos passos
 
-[Roadmap gráfico (#7)](https://github.com/HayatoG/tlg_pc/issues/7): pós-processamento (#2), 60 FPS (#5), efeitos do jogo (#3), resolução interna (#4) e FSR/DLSS (#6). Também estão nas issues o macOS (#1) e as correções que forem aparecendo.
+[Roadmap gráfico (#7)](https://github.com/HayatoG/tlg_pc/issues/7): testar o 60 FPS no jogo todo (#5), efeitos do jogo (#3), resolução interna (#4) e FSR/DLSS (#6). Também estão nas issues o áudio sem o arquivo do firmware (#11), importar o jogo de PKG (#9), o macOS (#1) e as correções que forem aparecendo.
 
 ## Créditos e aviso legal
 
@@ -117,7 +131,7 @@ Este projeto não tem vínculo com a Sony Interactive Entertainment, a SIE Japan
 
 # The Last Guardian — native PC port
 
-**The Last Guardian** (PS4, CUSA03627, update 01.03) running on PC with graphics, audio, controller and saves, at a steady 30 FPS and without a CPU emulator. The game's original code runs natively on the processor. The PS4 system is reimplemented, and the GPU is translated to Vulkan.
+**The Last Guardian** (PS4, CUSA03627, update 01.03) running on PC with graphics, audio, controller, mouse and keyboard and saves, at a steady 30 FPS (optional, experimental 60 FPS and unlocked modes) and without a CPU emulator. The game's original code runs natively on the processor. The PS4 system is reimplemented, and the GPU is translated to Vulkan.
 
 > **No game files come with this project.** To play, you need your own copy, dumped from your own PS4.
 
@@ -125,16 +139,28 @@ By **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) �
 
 The screenshots and the performance chart are at the top of this page.
 
+## What's new
+
+- **60 FPS and unlocked frame rate (experimental):** launcher → Video → "Frame rate (experimental)", or `TLG_FPS=30|60|unlocked`. The default is still 30 FPS, as on PS4. Details in [`docs/60fps.md`](docs/60fps.md) (in Portuguese, [#5](https://github.com/HayatoG/tlg_pc/issues/5)).
+- **Image filters:** SMAA anti-aliasing, RCAS (FSR 1) or CAS (AMD) sharpening and colour adjustments (brightness, contrast, saturation, gamma), in the launcher and live in the in-game menu (Insert → Image) ([#2](https://github.com/HayatoG/tlg_pc/issues/2)).
+- **Mouse and keyboard:** the mouse turns the camera (sensitivity and inverted Y in the launcher), and keys and mouse buttons can be remapped ([#8](https://github.com/HayatoG/tlg_pc/issues/8)).
+- **Motion sensor:** the DualShock 4/DualSense gyro works as is. On controllers without one, a tap on Share (or L3+R3) toggles "sensor mode": the left stick tilts the controller and cross/A shakes it. On the keyboard, T/G tilt and Y shakes.
+- **Sticks:** a 10% dead zone against drift (`TLG_STICK_DEADZONE`), and the last controller used is the one that counts.
+- **Touchpad without a touchpad:** hold View/Select (or Tab) and move the right stick (or the arrow keys) to swipe; a quick tap still clicks.
+- **Performance:** FPS no longer drops over time (shader variants are now reused), and repeated partial image transitions are skipped.
+- **Automatic shader cache:** the cache folder is keyed by the shader recompiler version, and the old cache is deleted on its own after an update.
+
 ## Status
 
 | Area | State |
 |---|---|
 | Boot, menu, intro and gameplay | ✅ Works; 10+ minute sessions without failures |
-| Graphics | ✅ Native 1080p, no shimmering |
+| Graphics | ✅ Native 1080p, no shimmering; optional SMAA, RCAS/CAS and colour adjustments |
 | Audio | ✅ With `libSceNgs2.sprx` from your console's firmware |
-| Controller | ✅ DualSense, DualShock 4, Xbox and 8BitDo via SDL3, with hot-plug |
+| Controller | ✅ DualSense, DualShock 4, Xbox and 8BitDo via SDL3, with hot-plug; real or simulated motion sensor |
+| Mouse and keyboard | ✅ Mouse camera and remapping in the launcher |
 | Saves | ✅ Autosave and Continue |
-| Performance | ✅ Locked 30 FPS, as on PS4 ([60 FPS: #5](https://github.com/HayatoG/tlg_pc/issues/5)) |
+| Performance | ✅ 30 FPS, as on PS4; 🧪 optional 60 FPS and unlocked, being tested ([#5](https://github.com/HayatoG/tlg_pc/issues/5)) |
 | Linux | ✅ Tested (Nobara/Fedora 44) |
 | Windows | 🧪 Automatic build, not yet tested in game |
 | macOS (Apple Silicon) | 📋 Planned ([#1](https://github.com/HayatoG/tlg_pc/issues/1)) |
@@ -167,12 +193,14 @@ Everything comes from **your own** PS4 (GoldHEN + Itemzflow). None of it is in t
 2. On the PC, copy the base game folder, then copy the update's contents **over it**, replacing files (`eboot.bin`, `sce_module/`, `sce_sys/`).
 3. Check the sizes. Files over 4 GB sent through GoldHEN 2.2's FTP arrive truncated, so use the USB drive.
 
+The full list, which also goes in the notes of every Release, is in [`docs/ARQUIVOS_NECESSARIOS.md`](docs/ARQUIVOS_NECESSARIOS.md).
+
 **PC:** a graphics card with Vulkan 1.3 (6 GB of VRAM recommended) and ~25 GB free.
 
 ## How to play
 
 1. Extract the package and put `libSceNgs2.sprx` in the `system_lib/` folder.
-2. Open **The Last Guardian**, pick the game folder and the language (English, Portuguese, Spanish or French), and click **Play**.
+2. Open **The Last Guardian**, pick the game folder, the language (English, Portuguese, Spanish or French) and, if you like, the frame rate and image filters. Click **Play**.
 3. In game, **F10** toggles the FPS counter, and **Insert** (or R3 + L2 on a controller) opens the port's menu.
 4. Controller (PS4/PS5, Xbox) or keyboard and mouse: the mouse turns the camera, **Esc** releases the mouse and a click takes it back. The layout and remapping are in [`README-player.md`](port/packaging/README-player.md) and in the launcher's **Controls** box.
 
@@ -200,7 +228,7 @@ Technical notes (Ghidra findings, fixed bugs, `TLG_*` options) are in [`docs/TEC
 
 ## Next steps
 
-[Graphics roadmap (#7)](https://github.com/HayatoG/tlg_pc/issues/7): post-processing (#2), 60 FPS (#5), game effects (#3), internal resolution (#4) and FSR/DLSS (#6). macOS (#1) and new fixes are tracked in the issues as well.
+[Graphics roadmap (#7)](https://github.com/HayatoG/tlg_pc/issues/7): testing 60 FPS through the whole game (#5), game effects (#3), internal resolution (#4) and FSR/DLSS (#6). Audio without the firmware file (#11), importing the game from a PKG (#9), macOS (#1) and new fixes are tracked in the issues as well.
 
 ## Credits and legal notice
 
