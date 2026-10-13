@@ -483,19 +483,38 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
     }
     build->pool_cache = &compiler_pools;
     snapshot.Stop();
-    AsyncJob<bool> capture_job;
-    if (!capture_job.Start(*capture_compiler, [this, build, binding] {
-        PhaseTimer capture{g_tlg_capture_ns};
-        auto [pools, reused] = compiler_pools.Acquire();
-        build->pools = std::move(pools);
-        if (reused) {
-            ++g_tlg_pool_reuses;
+    // tlg: the GPU thread waits until all guest reads and specialization are captured.
+    const auto capture_work = [this, build, binding] {
+        if (!build->pools) {
+            auto [pools, reused] = compiler_pools.Acquire();
+            build->pools = std::move(pools);
+            if (reused) {
+                ++g_tlg_pool_reuses;
+            }
         }
-        // tlg: the GPU thread waits until all guest reads and specialization are captured.
         build->ir.emplace(Shader::TranslateProgram(build->code, *build->pools, build->info,
                                                    build->runtime, profile));
         build->spec = Shader::StageSpecialization(build->info, build->runtime, profile, binding);
         build->fetch.Capture(build->info);
+    };
+    // tlg: the capture worker reads guest memory (fetch shader, resource descriptors). A page
+    // the GPU wrote is protected under precise readbacks, and its readback needs this (the GPU
+    // command) thread, which is waiting here: the worker gives up on such a fault
+    // (runtime_fault_recover) and the capture runs again on this thread, where the readback
+    // works. Seen in Gravity Rush 2 at the first draws.
+    auto faulted = std::make_shared<std::atomic<bool>>(false);
+    AsyncJob<bool> capture_job;
+    if (!capture_job.Start(*capture_compiler, [capture_work, faulted] {
+        PhaseTimer capture{g_tlg_capture_ns};
+        sigjmp_buf recover;
+        if (sigsetjmp(recover, 0)) {
+            runtime_fault_recover = nullptr;
+            faulted->store(true, std::memory_order_release);
+            return false;
+        }
+        runtime_fault_recover = &recover;
+        capture_work();
+        runtime_fault_recover = nullptr;
         return true;
     })) {
         return false;
@@ -504,7 +523,11 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
         PhaseTimer waiting{g_tlg_guest_wait_ns};
         capture_job.Wait();
     }
-    if (!capture_job.Poll()) {
+    if (faulted->load(std::memory_order_acquire)) {
+        PhaseTimer capture{g_tlg_capture_ns};
+        build->ir.reset();
+        capture_work();
+    } else if (!capture_job.Poll()) {
         if (initial) {
             program.compilation_failed = true;
         } else {

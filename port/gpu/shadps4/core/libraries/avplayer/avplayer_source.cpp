@@ -313,6 +313,17 @@ bool AvPlayerSource::Stop() {
         m_up_data_streamer->Reset();
     }
 
+    // tlg: ask all three to stop, wake every queue they may wait on, then join. Joining one at a
+    // time left Gravity Rush 2 stuck in sceAvPlayerStop after its opening movie.
+    m_video_decoder_thread.RequestStop();
+    m_audio_decoder_thread.RequestStop();
+    m_demuxer_thread.RequestStop();
+    m_video_packets_cv.Notify();
+    m_audio_packets_cv.Notify();
+    m_video_buffers_cv.Notify();
+    m_audio_buffers_cv.Notify();
+    m_video_frames_cv.Notify();
+    m_audio_frames_cv.Notify();
     m_video_decoder_thread.Stop();
     m_audio_decoder_thread.Stop();
     m_demuxer_thread.Stop();
