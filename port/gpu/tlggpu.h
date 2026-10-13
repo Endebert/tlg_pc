@@ -35,6 +35,8 @@ int tlggpu_choice_begin(const char *title, const char *const *items, const char 
 int tlggpu_choice_poll(void);
 /* 1 while the in-game settings menu is open: the game's pad input is held neutral. */
 int tlggpu_overlay_captures_input(void);
+/* A short message at the top of the screen (any thread). */
+void tlggpu_overlay_notice(const char *text, float seconds);
 /* The mouse, gathered by the window thread while the game has it (SDL relative mode: the window
  * has focus, the port's menu is closed and Esc did not release it; a click takes it again).
  * take: motion in mouse counts and wheel notches since the last call, then cleared. Buttons are
