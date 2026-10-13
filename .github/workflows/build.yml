@@ -7,6 +7,9 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  # Pull requests to main build both packages (artifacts only): the Release is left untouched.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -114,6 +117,8 @@ jobs:
 
   release:
     needs: [linux, windows]
+    # Only pushes publish (main -> nightly, v* tags -> versioned); pull requests stop at the artifacts.
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     permissions:
       contents: write

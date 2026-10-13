@@ -33,6 +33,15 @@ extern "C" void tlggpu_mouse_take(TlgGpuMouse* out) {
 namespace Frontend {
 
 WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}, height{height_} {
+    // tlg: the desktop shows this name and matches the app id with the launcher's .desktop entry
+    // (Alt+Tab, dock). The launcher sets TLG_APP_NAME / TLG_APP_ID per game.
+    {
+        const char* app_name = std::getenv("TLG_APP_NAME");
+        const char* app_id = std::getenv("TLG_APP_ID");
+        SDL_SetAppMetadata(app_name && *app_name ? app_name : "The Last Guardian", nullptr,
+                           app_id && *app_id ? app_id : "tlg-pc");
+        SDL_SetHint(SDL_HINT_APP_ID, app_id && *app_id ? app_id : "tlg-pc");
+    }
     // Gamepads are sampled by runtime_pad.c; their events are pumped here with the window's.
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         UNREACHABLE_MSG("Failed to initialize SDL video: {}", SDL_GetError());

@@ -574,7 +574,9 @@ void Menu() {
     // tlg: the game's own title (param.sfo), not a fixed one.
     static const std::string heading = [] {
         const std::string_view title = Common::ElfInfo::Instance().Title();
-        return std::string(title.empty() ? "The Last Guardian" : title) + "  (Insert / R3+L2)";
+        const char* app_name = std::getenv("TLG_APP_NAME");
+        return std::string(!title.empty() ? title : app_name && *app_name ? app_name : "The Last Guardian") +
+               "  (Insert / R3+L2)";
     }();
     if (!ImGui::Begin(heading.c_str(), &keep_open, ImGuiWindowFlags_NoCollapse)) {
         ImGui::End();

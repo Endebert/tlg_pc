@@ -260,6 +260,20 @@ def prepare(settings, log=print):
     return modules
 
 
+def window_icon():
+    """The port's icon (launcher/tlg.png) as BMP, SDL's built-in format, in out/; None if absent."""
+    source = PORT_DIR / 'launcher' / 'tlg.png'
+    target = OUT_DIR / 'window_icon.bmp'
+    try:
+        if source.is_file() and (not target.is_file() or target.stat().st_mtime < source.stat().st_mtime):
+            from PIL import Image  # optional: without Pillow the window keeps the default icon
+            OUT_DIR.mkdir(parents=True, exist_ok=True)
+            Image.open(source).convert('RGB').resize((128, 128)).save(target)
+        return target if target.is_file() else None
+    except Exception:
+        return None
+
+
 def build_env(settings, extra=None):
     env = dict(os.environ)
     for key, value in DEFAULT_ENV.items():
@@ -270,6 +284,12 @@ def build_env(settings, extra=None):
         env['TLG_UI_LANG'] = settings['ui_language']
     env['TLG_NGS2'] = 'native' if ngs2_module(settings) else 'hle'
     env['TLG_CONFIG'] = str(USER_DIR / 'tlg.ini')
+    # Window name and app id (matches tlg-pc.desktop for Alt+Tab and the dock) and icon.
+    env.setdefault('TLG_APP_NAME', 'The Last Guardian')
+    env.setdefault('TLG_APP_ID', 'tlg-pc')
+    icon = window_icon()
+    if icon:
+        env.setdefault('TLG_WINDOW_ICON', str(icon))
     # The present limiter never lets more frames through than the patched engine rate; unlocked
     # flips as soon as a frame is ready (480 Hz vblank) up to the display refresh or the menu limit.
     env['TLG_ENGINE_FPS'] = {'30': '30', '60': '60'}.get(applied_frame_rate, '240')
