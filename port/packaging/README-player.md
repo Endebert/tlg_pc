@@ -10,17 +10,28 @@ Versão experimental: o jogo roda do início ao gameplay, mas ainda pode travar 
 
 ## Português
 
-### O que você precisa
+### Arquivos do jogo necessários
 
-| Item | Onde conseguir | Obrigatório |
-|---|---|---|
-| Pasta do jogo **CUSA03627 com o update 01.03** (EUA): `eboot.bin`, `sce_module/` (`libc.prx`, `libSceFios2.prx`), `sce_sys/` e `trico_boot.psarc`, `trico_001.psarc`, `trico_002.psarc`, `trico_003.psarc` | Dump do seu PS4 desbloqueado: o jogo base mesclado com o patch 1.03 (o `eboot.bin` precisa ser o do 1.03) | Sim |
-| `libSceNgs2.sprx` | Firmware do seu PS4, em `/system/common/lib/` (por FTP com o GoldHEN, por exemplo) | Só para ter som |
-| PC | Windows 10 (1903+) / 11 de 64 bits, ou Linux x86-64 (glibc 2.39+: Ubuntu 24.04, Fedora 40, SteamOS 3.6 ou mais novos) | Sim |
-| Placa de vídeo | Vulkan 1.3 com driver atualizado; 6 GB de VRAM recomendados | Sim |
-| Espaço | ~25 GB para os arquivos do jogo | Sim |
+Tudo vem do **seu** PS4 (GoldHEN + Itemzflow). Nada disso vai no download. Use **The Last Guardian CUSA03627 (EUA) com o update 01.03**, montado numa pasta só, com o jogo base e o update por cima. São ~25 GB.
 
-Os arquivos `.psarc` acima de 4 GiB chegam truncados pelo FTP do GoldHEN 2.2. Copie-os por USB (Itemzflow, por exemplo) e confira os tamanhos.
+| Arquivo | Vem de | Tamanho | Para quê |
+|---|---|---|---|
+| `eboot.bin` | update 01.03 | 89 MB | o código do jogo (tem que ser o do 1.03) |
+| `sce_module/libc.prx`, `sce_module/libSceFios2.prx` | update 01.03 | 1,5 MB | bibliotecas do próprio jogo |
+| `sce_sys/` (`param.sfo`, `playgo-chunk.dat`, `icon0.png`, `pic0.png`, `pic1.png`) | jogo base + update | ~5 MB | metadados, instalação e a arte do launcher |
+| `trico_boot.psarc`, `trico_001.psarc`, `trico_002.psarc`, `trico_003.psarc` | jogo base | 2,8 + 5,8 + 5,4 + 6,8 GB | conteúdo principal |
+| `trico_bootp.psarc`, `trico_001p.psarc`, `trico_002p.psarc`, `trico_003p.psarc` | update 01.03 | ~1,6 GB | correções do update |
+| `trico_enu.psarc` / `trico_ptb.psarc` / `trico_esl.psarc` / `trico_frc.psarc` (+ os `…p.psarc` do update) | base + update | ~280 MB cada | vozes e textos: inglês, português, espanhol, francês |
+| `sce_discmap.plt`, `sce_discmap_patch.plt` | base, update | pequenos | mapa de arquivos (recomendado) |
+
+**Do firmware do console (opcional, para ter som):** `libSceNgs2.sprx` (372 KB), de `/system/common/lib/` do seu PS4. Ele vai na pasta `system_lib/` ao lado do executável.
+
+**Como montar a pasta:**
+1. No Itemzflow, faça o dump do jogo (`CUSA03627`) e do update (`CUSA03627-patch`) para um pendrive exFAT.
+2. No PC, copie a pasta do jogo base e depois copie o conteúdo do update **por cima**, substituindo os arquivos (`eboot.bin`, `sce_module/`, `sce_sys/`).
+3. Confira os tamanhos. Arquivos acima de 4 GB vindos pelo FTP do GoldHEN 2.2 chegam cortados, então use o pendrive.
+
+**PC:** Windows 10 (1903+)/11 64 bits ou Linux x86-64 (glibc 2.39+), placa de vídeo com Vulkan 1.3 (6 GB de VRAM recomendados).
 
 ### Como jogar
 
@@ -55,17 +66,28 @@ No Linux, `./install_desktop.sh` adiciona o jogo ao menu de aplicativos.
 
 ## English
 
-### What you need
+### Required game files
 
-| Item | Where to get it | Required |
-|---|---|---|
-| Game folder **CUSA03627 with update 01.03** (US): `eboot.bin`, `sce_module/` (`libc.prx`, `libSceFios2.prx`), `sce_sys/` and `trico_boot.psarc`, `trico_001.psarc`, `trico_002.psarc`, `trico_003.psarc` | A dump from your own jailbroken PS4: the base game merged with patch 1.03 (`eboot.bin` must be the 1.03 one) | Yes |
-| `libSceNgs2.sprx` | Your PS4 firmware, in `/system/common/lib/` (via GoldHEN FTP, for example) | For audio only |
-| PC | 64-bit Windows 10 (1903+) / 11, or x86-64 Linux (glibc 2.39+: Ubuntu 24.04, Fedora 40, SteamOS 3.6 or newer) | Yes |
-| Graphics card | Vulkan 1.3 with an up-to-date driver; 6 GB of VRAM recommended | Yes |
-| Disk space | ~25 GB for the game files | Yes |
+Everything comes from **your own** PS4 (GoldHEN + Itemzflow). None of it is in the download. Use **The Last Guardian CUSA03627 (US) with update 01.03**, merged into one folder, with the base game and the update on top. About 25 GB.
 
-`.psarc` files larger than 4 GiB arrive truncated over GoldHEN 2.2's FTP. Copy them over USB (Itemzflow, for example) and check the sizes.
+| File | From | Size | Purpose |
+|---|---|---|---|
+| `eboot.bin` | update 01.03 | 89 MB | the game code (must be the 1.03 one) |
+| `sce_module/libc.prx`, `sce_module/libSceFios2.prx` | update 01.03 | 1.5 MB | the game's own libraries |
+| `sce_sys/` (`param.sfo`, `playgo-chunk.dat`, `icon0.png`, `pic0.png`, `pic1.png`) | base + update | ~5 MB | metadata, install info and the launcher art |
+| `trico_boot.psarc`, `trico_001.psarc`, `trico_002.psarc`, `trico_003.psarc` | base game | 2.8 + 5.8 + 5.4 + 6.8 GB | main content |
+| `trico_bootp.psarc`, `trico_001p.psarc`, `trico_002p.psarc`, `trico_003p.psarc` | update 01.03 | ~1.6 GB | update fixes |
+| `trico_enu.psarc` / `trico_ptb.psarc` / `trico_esl.psarc` / `trico_frc.psarc` (+ the update's `…p.psarc`) | base + update | ~280 MB each | voices and text: English, Portuguese, Spanish, French |
+| `sce_discmap.plt`, `sce_discmap_patch.plt` | base, update | small | file map (recommended) |
+
+**From the console firmware (optional, for audio):** `libSceNgs2.sprx` (372 KB), from `/system/common/lib/` on your PS4. It goes in the `system_lib/` folder next to the executable.
+
+**How to build the folder:**
+1. In Itemzflow, dump the game (`CUSA03627`) and the update (`CUSA03627-patch`) to an exFAT USB drive.
+2. On the PC, copy the base game folder, then copy the update's contents **over it**, replacing files (`eboot.bin`, `sce_module/`, `sce_sys/`).
+3. Check the sizes. Files over 4 GB sent through GoldHEN 2.2's FTP arrive truncated, so use the USB drive.
+
+**PC:** 64-bit Windows 10 (1903+)/11 or x86-64 Linux (glibc 2.39+), a graphics card with Vulkan 1.3 (6 GB of VRAM recommended).
 
 ### How to play
 

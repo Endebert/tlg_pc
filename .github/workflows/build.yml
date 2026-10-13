@@ -122,6 +122,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: docs/ARQUIVOS_NECESSARIOS.md
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -138,7 +142,10 @@ jobs:
 
           - Linux x86-64 (glibc 2.39+): \`tlg-linux-x86_64.tar.gz\`
           - Windows 10/11 64-bit: \`tlg-windows-x86_64.zip\` (ainda não testado em jogo / not yet tested in game)
+
           NOTES
+          # The list of game files the player needs (docs/ARQUIVOS_NECESSARIOS.md), before the download.
+          sed '1,/^\[Português\]/d' docs/ARQUIVOS_NECESSARIOS.md >> notes.md
           if [[ $GITHUB_REF == refs/tags/v* ]]; then
             # Versioned releases are kept forever; nothing below ever deletes a v* release.
             gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md --prerelease
