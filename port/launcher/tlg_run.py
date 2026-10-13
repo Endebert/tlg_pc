@@ -53,7 +53,48 @@ DEFAULT_SETTINGS = {
     'vsync': True,
     'vram_budget_mb': 5600,
     'native_audio': True,
+    # Mouse and keyboard (tlg.ini; the in-game menu's Controls tab changes the mouse ones too).
+    'mouse_enabled': True,
+    'mouse_sensitivity': 1.0,
+    'mouse_invert_y': False,
+    'key_map': {},                 # PS4 button -> 'Key|Mouse Left' (empty: the default)
 }
+
+# Keyboard and mouse defaults of src/runtime_pad.c, in its key_map syntax ('|': several).
+DEFAULT_KEYS = {
+    'cross': 'Space', 'circle': 'Left Shift', 'square': 'E|Mouse Middle', 'triangle': 'Q|Mouse Left',
+    'l1': '1', 'r1': '3|Mouse Right', 'l2': 'R', 'r2': 'F', 'l3': 'Z', 'r3': 'C', 'options': 'Return',
+    'touchpad_left': 'Tab', 'touchpad_right': 'Backspace', 'up': 'I', 'down': 'K', 'left': 'J', 'right': 'L',
+}
+# Synced with tlg.ini both ways: the in-game menu saves them there.
+INI_KEYS = ('mouse_enabled', 'mouse_sensitivity', 'mouse_invert_y', 'key_map')
+
+
+def key_map_spec(mapping):
+    """The tlg.ini key_map value: only the buttons that differ from the defaults."""
+    return ','.join(f'{button}={value.strip()}' for button, value in mapping.items()
+                    if button in DEFAULT_KEYS and value.strip() and value.strip() != DEFAULT_KEYS[button])
+
+
+def parse_key_map(spec):
+    mapping = {}
+    for entry in (spec or '').split(','):
+        button, eq, value = entry.partition('=')
+        if eq and button.strip().lower() in DEFAULT_KEYS:
+            mapping[button.strip().lower()] = value.strip()
+    return mapping
+
+
+def read_ini(path):
+    values = {}
+    try:
+        for line in Path(path).read_text(encoding='utf-8').splitlines():
+            key, eq, value = line.partition('=')
+            if eq and not key.startswith('#'):
+                values[key.strip()] = value.strip()
+    except OSError:
+        pass
+    return values
 
 
 def config_path():
@@ -67,6 +108,19 @@ def load_settings():
         settings.update(json.loads(config_path().read_text(encoding='utf-8')))
     except (OSError, ValueError):
         pass
+    # The in-game menu may have changed the mouse since: tlg.ini wins for those keys.
+    ini = read_ini(USER_DIR / 'tlg.ini')
+    try:
+        if 'mouse_enabled' in ini:
+            settings['mouse_enabled'] = ini['mouse_enabled'] != '0'
+        if 'mouse_invert_y' in ini:
+            settings['mouse_invert_y'] = ini['mouse_invert_y'] != '0'
+        if 'mouse_sensitivity' in ini:
+            settings['mouse_sensitivity'] = min(5.0, max(0.1, float(ini['mouse_sensitivity'])))
+    except ValueError:
+        pass
+    if 'key_map' in ini:
+        settings['key_map'] = parse_key_map(ini['key_map'])
     return settings
 
 
@@ -223,6 +277,10 @@ def launch(settings, seconds=0, extra_env=None):
         'display_mode': settings['display_mode'],
         'vsync': int(bool(settings['vsync'])),
         'show_fps': int(bool(settings['show_fps'])),
+        'mouse_enabled': int(bool(settings.get('mouse_enabled', True))),
+        'mouse_sensitivity': f"{float(settings.get('mouse_sensitivity', 1.0)):.2f}",
+        'mouse_invert_y': int(bool(settings.get('mouse_invert_y', False))),
+        'key_map': key_map_spec(settings.get('key_map') or {}),
     })
     log = new_log()
     cmd = [str(PROBE), str(OUT_DIR / 'boot-linked.bin'), '--app0', settings['game_dir'],

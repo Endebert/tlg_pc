@@ -41,6 +41,27 @@ TEXT = {
     'vram_hint': ('5600 for 6 GB cards, 7000 for 8 GB', '5600 para placas de 6 GB, 7000 para 8 GB'),
     'audio': ('Audio', 'Áudio'),
     'native_audio': ('Native audio (libSceNgs2.sprx from your console)', 'Áudio nativo (libSceNgs2.sprx do seu console)'),
+    'controls': ('Controls', 'Controles'),
+    'mouse_enabled': ('Mouse turns the camera', 'Mouse gira a câmera'),
+    'mouse_invert_y': ('Invert mouse Y axis', 'Inverter eixo Y do mouse'),
+    'mouse_sensitivity': ('Mouse sensitivity', 'Sensibilidade do mouse'),
+    'mouse_hint': ('Esc releases the mouse; a click in the game window takes it back.',
+                   'Esc solta o mouse; um clique na janela do jogo prende de novo.'),
+    'remap': ('Keyboard and mouse buttons…', 'Teclas e botões do mouse…'),
+    'remap_title': ('Keyboard and mouse buttons', 'Teclas e botões do mouse'),
+    'remap_help': ('Click Set and press a key or mouse button, or type SDL names (Space, Left Shift, '
+                   'Mouse Left, Mouse X1, Wheel Up…). "|" gives several: Q|Mouse Left. "none": no key. '
+                   'Empty: the default (grey). Applies at the next start.',
+                   'Clique em Definir e aperte uma tecla ou botão do mouse, ou digite nomes do SDL (Space, Left Shift, '
+                   'Mouse Left, Mouse X1, Wheel Up…). "|" junta vários: Q|Mouse Left. "none": nenhuma tecla. '
+                   'Vazio: o padrão (cinza). Vale na próxima vez que o jogo abrir.'),
+    'button': ('PS4 button', 'Botão do PS4'),
+    'keys': ('Keys / mouse', 'Teclas / mouse'),
+    'default': ('Default', 'Padrão'),
+    'set': ('Set', 'Definir'),
+    'press': ('Press a key…', 'Aperte uma tecla…'),
+    'reset': ('Reset all', 'Restaurar tudo'),
+    'close': ('Close', 'Fechar'),
     'play': ('Play', 'Jogar'),
     'saves': ('Saves folder', 'Pasta de saves'),
     'logs': ('Logs folder', 'Pasta de logs'),
@@ -68,6 +89,38 @@ GAME_LANGUAGE_NAMES = {'en': 'English', 'pt_BR': 'Português (Brasil)', 'es_LA':
 UI_LANGUAGES = ['auto', 'pt_BR', 'en_US']
 UI_LANGUAGE_NAMES = {'pt_BR': 'Português (Brasil)', 'en_US': 'English (US)'}
 DISPLAY_MODES = ['Windowed', 'Borderless', 'Fullscreen']
+# The PS4 buttons the remap dialog lists, with what they do in The Last Guardian when known.
+PS4_BUTTONS = [
+    ('cross', 'Cross (X)', ('jump', 'pular')), ('circle', 'Circle', None), ('square', 'Square', None),
+    ('triangle', 'Triangle', ('grab, hold on', 'agarrar, segurar')), ('l1', 'L1', None),
+    ('r1', 'R1', ('call Trico', 'chamar o Trico')), ('l2', 'L2', None), ('r2', 'R2', None), ('l3', 'L3', None),
+    ('r3', 'R3', None), ('options', 'Options', ('menu', 'menu')),
+    ('touchpad_left', 'Touchpad (left)', ('photo mode', 'modo foto')),
+    ('touchpad_right', 'Touchpad (right)', ('pause', 'pausa')),
+    ('up', 'D-pad up', None), ('down', 'D-pad down', None), ('left', 'D-pad left', None), ('right', 'D-pad right', None),
+]
+# Tk key names -> SDL key names (src/runtime_pad.c reads SDL names); letters and digits are the same.
+TK_TO_SDL = {
+    'space': 'Space', 'Shift_L': 'Left Shift', 'Shift_R': 'Right Shift', 'Control_L': 'Left Ctrl',
+    'Control_R': 'Right Ctrl', 'Alt_L': 'Left Alt', 'Alt_R': 'Right Alt', 'Return': 'Return', 'Tab': 'Tab',
+    'BackSpace': 'Backspace', 'Up': 'Up', 'Down': 'Down', 'Left': 'Left', 'Right': 'Right', 'Delete': 'Delete',
+    'Insert': 'Insert', 'Home': 'Home', 'End': 'End', 'Prior': 'PageUp', 'Next': 'PageDown',
+    'Caps_Lock': 'CapsLock', 'comma': ',', 'period': '.', 'minus': '-', 'equal': '=', 'slash': '/',
+    'semicolon': ';', 'apostrophe': "'", 'bracketleft': '[', 'bracketright': ']', 'backslash': '\\',
+    'grave': '`', 'KP_Enter': 'Keypad Enter',
+}
+TK_MOUSE = {1: 'Mouse Left', 2: 'Mouse Middle', 3: 'Mouse Right', 8: 'Mouse X1', 9: 'Mouse X2'}
+
+
+def sdl_key_name(keysym):
+    """The SDL name of a Tk key, or None (Esc releases the mouse in game; F-keys are the port's)."""
+    if keysym in TK_TO_SDL:
+        return TK_TO_SDL[keysym]
+    if len(keysym) == 1 and keysym.isalnum():
+        return keysym.upper()
+    if keysym.startswith('KP_') and keysym[3:].isdigit():
+        return f'Keypad {keysym[3:]}'
+    return None
 
 
 def art_path(settings, name):
@@ -114,7 +167,7 @@ class Launcher:
             child.destroy()
         root = self.root
         root.title(self.t('title'))
-        root.minsize(1120, 640)
+        root.minsize(1120, 680)
         pad = {'padx': 6, 'pady': 4}
         main = ttk.Frame(root, padding=12)
         main.pack(fill='both', expand=True)
@@ -158,8 +211,23 @@ class Launcher:
             ttk.Button(game, text=self.t('browse'), command=lambda k=key: self.browse(k)).grid(
                 row=row * 2 + 1, column=1, padx=(6, 0), pady=(0, 6))
         audio = ttk.LabelFrame(left, text=self.t('audio'), padding=8)
-        audio.grid(sticky='ew')
+        audio.grid(sticky='ew', pady=(0, 8))
         self.check(audio, 0, 'native_audio')
+        controls = ttk.LabelFrame(left, text=self.t('controls'), padding=8)
+        controls.grid(sticky='ew')
+        controls.columnconfigure(1, weight=1)
+        self.check(controls, 0, 'mouse_enabled')
+        self.check(controls, 1, 'mouse_invert_y')
+        ttk.Label(controls, text=self.t('mouse_sensitivity')).grid(row=2, column=0, sticky='w', pady=(4, 0))
+        sens = tk.DoubleVar(value=float(self.settings.get('mouse_sensitivity', 1.0)))
+        self.vars['mouse_sensitivity'] = sens
+        sens_spin = ttk.Spinbox(controls, from_=0.1, to=5.0, increment=0.1, format='%.2f', textvariable=sens,
+                                width=6, command=self.changed)
+        sens_spin.grid(row=2, column=1, sticky='w', padx=6, pady=(4, 0))
+        sens_spin.bind('<FocusOut>', lambda _: self.changed())
+        ttk.Button(controls, text=self.t('remap'), command=self.remap_dialog).grid(row=2, column=2, sticky='e', pady=(4, 0))
+        ttk.Label(controls, text=self.t('mouse_hint'), foreground='#777', wraplength=420, justify='left').grid(
+            row=3, column=0, columnspan=3, sticky='w', pady=(2, 0))
 
         middle = ttk.Frame(main)
         middle.grid(row=2, column=1, sticky='nsew', **pad)
@@ -243,6 +311,85 @@ class Launcher:
                 self.refresh_status()
         box.bind('<<ComboboxSelected>>', picked)
         return box
+
+    def remap_dialog(self):
+        """PS4 button -> keys and mouse buttons (tlg.ini key_map through tlg_run.launch)."""
+        if getattr(self, 'remap_window', None) and self.remap_window.winfo_exists():
+            self.remap_window.lift()
+            return
+        win = self.remap_window = tk.Toplevel(self.root)
+        win.title(self.t('remap_title'))
+        win.transient(self.root)
+        frame = ttk.Frame(win, padding=12)
+        frame.pack(fill='both', expand=True)
+        mapping = dict(self.settings.get('key_map') or {})
+        entries = {}
+        half = (len(PS4_BUTTONS) + 1) // 2
+        for column in (0, 4):
+            ttk.Label(frame, text=self.t('button'), font=('TkDefaultFont', 9, 'bold')).grid(row=0, column=column, sticky='w')
+            ttk.Label(frame, text=self.t('keys'), font=('TkDefaultFont', 9, 'bold')).grid(row=0, column=column + 1, sticky='w')
+            ttk.Label(frame, text=self.t('default'), font=('TkDefaultFont', 9, 'bold')).grid(row=0, column=column + 3, sticky='w')
+
+        def save(*_):
+            self.settings['key_map'] = {b: e.get().strip() for b, e in entries.items() if e.get().strip()}
+            tlg_run.save_settings(self.settings)
+
+        def capture(button, entry, set_button):
+            set_button.configure(text=self.t('press'))
+            win.focus_set()
+
+            def done(name):
+                for sequence in ('<KeyPress>', '<ButtonPress>'):
+                    win.unbind(sequence)
+                set_button.configure(text=self.t('set'))
+                if name:
+                    entry.delete(0, 'end')
+                    entry.insert(0, name)
+                    save()
+
+            def key(event):
+                if event.keysym == 'Escape':
+                    done(None)
+                else:
+                    done(sdl_key_name(event.keysym))
+                return 'break'
+
+            def mouse(event):
+                done(TK_MOUSE.get(event.num))
+                return 'break'
+            win.after(150, lambda: (win.bind('<KeyPress>', key), win.bind('<ButtonPress>', mouse)))
+
+        for index, (button, name, action) in enumerate(PS4_BUTTONS):
+            row, column = index % half + 1, 0 if index < half else 4
+            label = name if not action else f'{name} — {action[1] if self.pt() else action[0]}'
+            ttk.Label(frame, text=label).grid(row=row, column=column, sticky='w', padx=(0, 6), pady=1)
+            entry = ttk.Entry(frame, width=20)
+            entry.insert(0, mapping.get(button, ''))
+            entry.grid(row=row, column=column + 1, sticky='ew', pady=1)
+            entry.bind('<FocusOut>', save)
+            entry.bind('<Return>', save)
+            entries[button] = entry
+            set_button = ttk.Button(frame, text=self.t('set'), width=10)
+            set_button.configure(command=lambda b=button, e=entry, s=set_button: capture(b, e, s))
+            set_button.grid(row=row, column=column + 2, padx=4, pady=1)
+            ttk.Label(frame, text=tlg_run.DEFAULT_KEYS[button], foreground='#888').grid(
+                row=row, column=column + 3, sticky='w', padx=(0, 18))
+        ttk.Label(frame, text=self.t('remap_help'), foreground='#555', wraplength=760, justify='left').grid(
+            row=half + 1, column=0, columnspan=8, sticky='w', pady=(10, 6))
+        bottom = ttk.Frame(frame)
+        bottom.grid(row=half + 2, column=0, columnspan=8, sticky='ew')
+
+        def reset():
+            for entry in entries.values():
+                entry.delete(0, 'end')
+            save()
+
+        def close():
+            save()
+            win.destroy()
+        ttk.Button(bottom, text=self.t('reset'), command=reset).pack(side='left')
+        ttk.Button(bottom, text=self.t('close'), command=close).pack(side='right')
+        win.protocol('WM_DELETE_WINDOW', close)
 
     def check(self, parent, row, key):
         var = tk.BooleanVar(value=bool(self.settings[key]))
