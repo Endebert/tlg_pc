@@ -312,6 +312,7 @@ Uso: `TLG_<OPÇÃO>=valor ./run_tlg.sh`. Os padrões abaixo já estão em `port/
 | `TLG_UPSCALER` | `off` | `off`, `fsr3`, `taa`… (os upscalers do port de GoW3 causam tremor no TLG) |
 | `TLG_JITTER` / `TLG_OBJECT_MOTION` | `0` / `0` | jitter de câmera e motion vectors para upscalers temporais |
 | `TLG_PIPELINE_BINARIES` | `0` | cache `VK_KHR_pipeline_binary` (trava no NVIDIA 595) |
+| `TLG_FPS` | `30` | taxa de quadros: `30` (como no PS4), `60` ou `unlocked`; patches só no eboot 1.03, ver [60fps.md](60fps.md) |
 | `TLG_FRAME_STATS` | `1` | FPS e diagnóstico de engasgos no log a cada 5 s |
 | `TLG_SHOW_FPS` | `0` | overlay de FPS ligado desde o início (F10 alterna em jogo) |
 | `TLG_UI_LANG` | idioma do sistema | idioma do menu do overlay: `pt_BR` ou `en_US` |

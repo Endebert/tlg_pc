@@ -218,7 +218,7 @@ void Load() {
     v.startup_render_resolution = v.render_resolution;
     v.startup_engine_fps = v.engine_fps;
     const char* applied = std::getenv("TLG_ENGINE_FPS");
-    v.applied_engine_fps = applied && applied[0] ? TlgGraphics::ParseEngineFps(std::atoi(applied))
+    v.applied_engine_fps = applied && applied[0] ? TlgGraphics::ParseAppliedEngineFps(std::atoi(applied))
                                                  : v.engine_fps.load();
     v.startup_deferred_readback = v.deferred_readback;
     v.startup_stale_readback = v.stale_readback;

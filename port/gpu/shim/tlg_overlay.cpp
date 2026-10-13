@@ -370,8 +370,18 @@ void PerformanceTab() {
     ImGui::SeparatorText(TL("Live", "Em tempo real"));
     if (BeginRows("##live")) {
         static const char* const fps_labels[] = {"30", "60", "120", "240", TL("Unlimited", "Sem limite")};
+        // tlg: the engine ceiling is the launch's frame rate mode (launcher, TLG_FPS): a limit above it
+        // has no effect.
+        const char* fps_tip = s.applied_engine_fps <= 30
+            ? TL("Caps the presented frames. The game runs at 30 FPS (as on PS4); 60 FPS is a launcher option.",
+                 "Limita os quadros apresentados. O jogo roda a 30 FPS (como no PS4); 60 FPS é uma opção do launcher.")
+            : s.applied_engine_fps <= 60
+            ? TL("Caps the presented frames. 60 FPS mode (launcher): limits above 60 have no effect.",
+                 "Limita os quadros apresentados. Modo 60 FPS (launcher): limites acima de 60 não têm efeito.")
+            : TL("Caps the presented frames. Unlocked mode (launcher): Unlimited follows the display refresh, up to 120.",
+                 "Limita os quadros apresentados. Modo livre (launcher): Sem limite segue a taxa do monitor, até 120.");
         ChoiceRow(TL("Frame rate limit", "Limite de FPS"), s.fps_limit, fps_labels, G::FpsLimits.data(), int(G::FpsLimits.size()),
-                  TL("Caps the presented frames. The game runs at 30 FPS (as on PS4).", "Limita os quadros apresentados. O jogo roda a 30 FPS (como no PS4)."));
+                  fps_tip);
         static const char* const queued_labels[] = {TL("1 (lowest latency)", "1 (menor atraso)"), "2", TL("Unlimited", "Sem limite")};
         ChoiceRow(TL("Frames queued", "Quadros na fila"), s.frames_queued, queued_labels, G::FramesQueued.data(),
                   int(G::FramesQueued.size()), TL("More frames queued: steadier FPS, slower response to input.", "Mais quadros na fila: FPS mais estável, resposta mais lenta."));

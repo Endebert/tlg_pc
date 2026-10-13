@@ -58,7 +58,11 @@ DEFAULT_SETTINGS = {
     'mouse_sensitivity': 1.0,
     'mouse_invert_y': False,
     'key_map': {},                 # PS4 button -> 'Key|Mouse Left' (empty: the default)
+    'frame_rate': '30',            # 30 | 60 | unlocked (scripts/tlg_patches.py; TLG_FPS wins)
 }
+FRAME_RATES = ['30', '60', 'unlocked']
+# The frame rate mode prepare() really applied (another eboot build stays at 30).
+applied_frame_rate = '30'
 
 # Keyboard and mouse defaults of src/runtime_pad.c, in its key_map syntax ('|': several).
 DEFAULT_KEYS = {
@@ -209,8 +213,15 @@ def run_script(argv):
     return 0
 
 
+def frame_rate(settings):
+    """The requested frame rate mode: TLG_FPS, else the launcher's setting."""
+    return os.environ.get('TLG_FPS') or str(settings.get('frame_rate', '30'))
+
+
 def prepare(settings, log=print):
-    """Builds out/boot-linked.bin and out/content.bin; returns the module list that was linked."""
+    """Builds out/boot-linked.bin, out/content.bin and out/patches.bin (frame rate patches);
+    returns the module list that was linked."""
+    global applied_frame_rate
     game = settings['game_dir']
     scripts = PORT_DIR / 'scripts'
     modules = ['libc.prx', 'libSceFios2.prx']
@@ -221,6 +232,7 @@ def prepare(settings, log=print):
         [*python_command(scripts / 'prepare.py'), game, '--out', str(OUT_DIR)],
         [*python_command(scripts / 'link_modules.py'), game, '--out', str(OUT_DIR), '--modules', *modules],
         [*python_command(scripts / 'content_profile.py'), game, '--out', str(OUT_DIR)],
+        [*python_command(scripts / 'tlg_patches.py'), game, '--out', str(OUT_DIR), '--mode', frame_rate(settings)],
     ]
     for step in steps:
         result = subprocess.run(step, cwd=str(scripts), capture_output=True, text=True,
@@ -230,6 +242,8 @@ def prepare(settings, log=print):
             raise RuntimeError(f'{name}: {result.stderr.strip() or result.stdout.strip()}')
         for line in result.stdout.splitlines():
             log(line)
+            if line.startswith('Frame rate: ') and line.endswith(' patch writes'):
+                applied_frame_rate = line.split()[2]
     return modules
 
 
@@ -243,6 +257,11 @@ def build_env(settings, extra=None):
         env['TLG_UI_LANG'] = settings['ui_language']
     env['TLG_NGS2'] = 'native' if ngs2_module(settings) else 'hle'
     env['TLG_CONFIG'] = str(USER_DIR / 'tlg.ini')
+    # The present limiter never lets more frames through than the patched engine rate; unlocked
+    # flips as soon as a frame is ready (480 Hz vblank) up to the display refresh or the menu limit.
+    env['TLG_ENGINE_FPS'] = {'30': '30', '60': '60'}.get(applied_frame_rate, '240')
+    if applied_frame_rate == 'unlocked':
+        env.setdefault('TLG_VBLANK_HZ', '0')
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
     env.setdefault('TLG_RESTART_COMMAND', restart)
     # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib.
@@ -285,7 +304,7 @@ def launch(settings, seconds=0, extra_env=None):
     log = new_log()
     cmd = [str(PROBE), str(OUT_DIR / 'boot-linked.bin'), '--app0', settings['game_dir'],
            '--user', str(USER_DIR), '--content-profile', str(OUT_DIR / 'content.bin'),
-           '--timeout', str(int(seconds))]
+           '--patches', str(OUT_DIR / 'patches.bin'), '--timeout', str(int(seconds))]
     process = subprocess.Popen(cmd, cwd=str(USER_DIR), env=build_env(settings, extra_env),
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                encoding='utf-8', errors='replace', bufsize=1)
@@ -306,10 +325,14 @@ def main(argv=None):
         for kind, detail in problems:
             print(f'{"Compile primeiro" if kind == "not_built" else "Faltando"}: {detail}', file=sys.stderr)
         return 1
-    prepare(settings, log=lambda line: None)
+    notes = []
+    prepare(settings, log=lambda line: notes.append(line) if line.startswith('Frame rate') else None)
     process, log = launch(settings, seconds)
     print(f'Rodando (log: {log})', flush=True)
     with open(log, 'w', encoding='utf-8') as out:
+        for line in notes:
+            print(line, flush=True)
+            out.write(line + '\n')
         for line in process.stdout:
             sys.stdout.write(line)
             out.write(line)
