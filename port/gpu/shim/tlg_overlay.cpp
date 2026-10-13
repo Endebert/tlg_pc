@@ -263,6 +263,16 @@ void SliderRow(const char* label, std::atomic<int>& value, int lo, int hi, const
     ImGui::PopID();
 }
 
+void FloatRow(const char* label, std::atomic<float>& value, float lo, float hi, const char* format, const char* help) {
+    Row(label);
+    float v = value;
+    if (ImGui::SliderFloat("##value", &v, lo, hi, format, ImGuiSliderFlags_AlwaysClamp)) {
+        Store(value, std::clamp(v, lo, hi), true);
+    }
+    Help(help);
+    ImGui::PopID();
+}
+
 const char* UpscalerLabel(int upscaler) {
     switch (upscaler) {
     case TlgSettings::UpscalerFsr3: return "FSR 3.1";
@@ -432,6 +442,57 @@ void OverlayTab() {
 }
 
 // Startup options changed since this launch (applied by "Apply and restart").
+// Mouse and keyboard (src/runtime_pad.c): the mouse settings apply at once; the layout is the
+// default one unless the launcher's Controls (tlg.ini key_map) or TLG_KEY_MAP changed it.
+void ControlsTab() {
+    auto& s = TlgSettings::Get();
+    ImGui::SeparatorText(TL("Mouse", "Mouse"));
+    if (BeginRows("##mouse")) {
+        CheckRow(TL("Mouse turns the camera", "Mouse gira a câmera"), s.mouse_enabled,
+                 TL("The game window takes the mouse while it has focus. Esc releases it; a click in the window takes it back.",
+                    "A janela do jogo prende o mouse enquanto tem o foco. Esc solta; um clique na janela prende de novo."));
+        ImGui::BeginDisabled(!s.mouse_enabled);
+        FloatRow(TL("Sensitivity", "Sensibilidade"), s.mouse_sensitivity, 0.1f, 5.0f, "%.2f",
+                 TL("How far the camera turns for the same mouse movement.", "Quanto a câmera gira para o mesmo movimento do mouse."));
+        CheckRow(TL("Invert Y axis", "Inverter eixo Y"), s.mouse_invert_y,
+                 TL("Moving the mouse forward looks down.", "Empurrar o mouse para frente olha para baixo."));
+        FloatRow(TL("Smoothing", "Suavização"), s.mouse_smoothing, 0.0f, 0.9f, "%.2f",
+                 TL("Evens out the camera motion; higher values feel softer and a little slower.",
+                    "Deixa o movimento da câmera mais uniforme; valores altos ficam mais suaves e um pouco mais lentos."));
+        FloatRow(TL("Acceleration", "Aceleração"), s.mouse_accel, 0.0f, 2.0f, "%.2f",
+                 TL("Fast movements turn more than slow ones. 0 is linear.", "Movimentos rápidos giram mais que os lentos. 0 é linear."));
+        FloatRow(TL("Anti-dead zone", "Anti-zona morta"), s.mouse_deadzone, 0.0f, 0.5f, "%.2f",
+                 TL("Small mouse movements skip the game's stick dead zone. Raise it if slow movements do nothing.",
+                    "Movimentos pequenos do mouse pulam a zona morta do analógico do jogo. Aumente se movimentos lentos não fizerem nada."));
+        ImGui::EndDisabled();
+        ImGui::EndTable();
+    }
+    ImGui::SeparatorText(TL("Keyboard and mouse layout", "Layout de teclado e mouse"));
+    if (BeginRows("##layout")) {
+        InfoRow(TL("Move / camera", "Andar / câmera"), TL("WASD / mouse or arrow keys", "WASD / mouse ou setas"));
+        InfoRow(TL("Jump (Cross)", "Pular (X)"), TL("Space", "Espaço"));
+        InfoRow(TL("Grab, hold on (Triangle)", "Agarrar, segurar (Triângulo)"), TL("Left click or Q", "Clique esquerdo ou Q"));
+        InfoRow(TL("Call Trico (R1)", "Chamar o Trico (R1)"), TL("Right click or 3", "Clique direito ou 3"));
+        InfoRow(TL("Square / Circle", "Quadrado / Círculo"), TL("E or middle click / Left Shift", "E ou clique do meio / Shift esquerdo"));
+        InfoRow("L1 / L2 / R2", "1 / R / F");
+        InfoRow("L3 / R3", "Z / C");
+        InfoRow(TL("D-pad", "Direcional"), "I J K L");
+        InfoRow("Options", "Enter");
+        InfoRow(TL("Touchpad (photo / pause)", "Touchpad (foto / pausa)"), "Tab / Backspace");
+        InfoRow(TL("Release the mouse", "Soltar o mouse"), "Esc");
+        const char* env = std::getenv("TLG_KEY_MAP");
+        const std::string remap = env && env[0] ? std::string(env) : s.key_map;
+        if (!remap.empty()) {
+            InfoRow(TL("Remapped (launcher)", "Remapeado (launcher)"), remap.c_str());
+        }
+        ImGui::EndTable();
+    }
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", TL("Remap keys and mouse buttons in the launcher (Controls); it applies at the next start.",
+                                 "Remapeie teclas e botões do mouse no launcher (Controles); vale a partir da próxima vez que o jogo abrir."));
+    ImGui::PopTextWrapPos();
+}
+
 int RestartChanges() {
     const auto& s = TlgSettings::Get();
     return (s.render_resolution != s.startup_render_resolution) + (s.engine_fps != s.startup_engine_fps) +
@@ -458,7 +519,7 @@ void Menu() {
         return;
     }
     footer_help = nullptr;
-    constexpr int TabCount = 3;
+    constexpr int TabCount = 4;
     const ImGuiIO& io = ImGui::GetIO();
     if (!io.WantTextInput) {
         const int step = ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false) || ImGui::IsKeyPressed(ImGuiKey_E, false) ? 1
@@ -471,7 +532,8 @@ void Menu() {
     }
     const float footer = ImGui::GetFrameHeightWithSpacing() * 2.0f + ImGui::GetTextLineHeightWithSpacing() * 2.0f;
     if (ImGui::BeginTabBar("##tabs")) {
-        static const char* const tabs[TabCount] = {"Overlay", TL("Image", "Imagem"), TL("Performance", "Desempenho")};
+        static const char* const tabs[TabCount] = {"Overlay", TL("Image", "Imagem"), TL("Performance", "Desempenho"),
+                                                   TL("Controls", "Controles")};
         for (int tab = 0; tab < TabCount; ++tab) {
             const ImGuiTabItemFlags flags = requested_tab == tab ? ImGuiTabItemFlags_SetSelected : 0;
             if (!ImGui::BeginTabItem(tabs[tab], nullptr, flags)) {
@@ -485,6 +547,7 @@ void Menu() {
                 switch (tab) {
                 case 1: ImageTab(); break;
                 case 2: PerformanceTab(); break;
+                case 3: ControlsTab(); break;
                 default: OverlayTab(); break;
                 }
             }
