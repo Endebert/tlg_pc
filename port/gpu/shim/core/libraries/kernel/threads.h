@@ -47,6 +47,11 @@ public:
         }
     }
     bool Joinable() const { return thread.joinable(); }
+    /// tlg: asks the thread to stop without waiting (Stop() joins); callers that hold several
+    /// threads ask them all first, wake what they wait on, then join.
+    void RequestStop() {
+        if (thread.joinable()) thread.request_stop();
+    }
     void Stop() {
         if (thread.joinable()) {
             thread.request_stop();
