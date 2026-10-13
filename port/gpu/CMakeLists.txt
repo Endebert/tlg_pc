@@ -136,7 +136,7 @@ add_host_shader(smaa.vert smaa_weights_vert SMAA_PASS=1)
 add_host_shader(smaa.frag smaa_weights_frag SMAA_PASS=1)
 add_host_shader(smaa.vert smaa_blend_vert SMAA_PASS=2)
 add_host_shader(smaa.frag smaa_blend_frag SMAA_PASS=2)
-add_host_shader(cas.comp cas_comp)
+add_host_shader(cas.frag cas_frag)
 add_host_shader(camera_motion.comp camera_motion_comp)
 add_host_shader(upscale_merge.comp upscale_merge_comp)
 add_host_shader(upscale_reactive.comp upscale_reactive_comp)
@@ -348,6 +348,15 @@ set_source_files_properties(../tests/test_taa_shader.cpp PROPERTIES
     COMPILE_OPTIONS "-fvisibility=hidden;-fvisibility-inlines-hidden")
 target_link_libraries(taa-shader-test PRIVATE tlggpu)
 add_dependencies(taa-shader-test host_shaders)
+
+# tlg: SMAA / CAS passes on a synthetic image: ninja -C out/gpu postfx-test && out/gpu/postfx-test
+add_executable(postfx-test EXCLUDE_FROM_ALL ../tests/test_postfx_passes.cpp ../tests/test_gpu_runtime_stubs.cpp)
+target_include_directories(postfx-test PRIVATE shim shadps4 ${SHADER_INCLUDE} third_party/gcn/include)
+target_compile_options(postfx-test PRIVATE -UNDEBUG -fPIC)
+set_source_files_properties(../tests/test_postfx_passes.cpp PROPERTIES
+    COMPILE_OPTIONS "-fvisibility=hidden;-fvisibility-inlines-hidden")
+target_link_libraries(postfx-test PRIVATE tlggpu)
+add_dependencies(postfx-test host_shaders)
 
 add_executable(camera-motion-test EXCLUDE_FROM_ALL ../tests/test_camera_motion.cpp ../tests/test_gpu_runtime_stubs.cpp)
 target_include_directories(camera-motion-test PRIVATE shim shadps4 ${SHADER_INCLUDE} third_party/gcn/include)

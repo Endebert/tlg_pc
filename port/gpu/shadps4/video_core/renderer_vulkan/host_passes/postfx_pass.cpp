@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // tlg: SMAA 1x and AMD CAS on the presented image (postfx_pass.h).
 
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "common/assert.h"
 #include "core/emulator_settings.h"
-#include "video_core/host_shaders/cas_comp.h"
+#include "video_core/host_shaders/cas_frag.h"
+#include "video_core/host_shaders/fs_tri_vert.h"
 #include "video_core/host_shaders/smaa_blend_frag.h"
 #include "video_core/host_shaders/smaa_blend_vert.h"
 #include "video_core/host_shaders/smaa_edges_frag.h"
@@ -227,7 +231,8 @@ void SmaaPass::CreateTarget(Target& target, vk::Format format, vk::Extent2D size
         .samples = vk::SampleCountFlagBits::e1,
         .usage = vk::ImageUsageFlagBits::eSampled |
                  (lookup ? vk::ImageUsageFlagBits::eTransferDst
-                         : vk::ImageUsageFlagBits::eColorAttachment),
+                         : vk::ImageUsageFlagBits::eColorAttachment |
+                                   vk::ImageUsageFlagBits::eTransferSrc), // frame dump
         .initialLayout = vk::ImageLayout::eUndefined,
     });
     SetObjectName(device, static_cast<vk::Image>(target.image), name);
@@ -387,29 +392,20 @@ void CasPass::Create(vk::Device device_, VmaAllocator allocator_) {
     device = device_;
     allocator = allocator_;
     sampler = MakeSampler(device, vk::Filter::eNearest);
-    const std::array<vk::DescriptorSetLayoutBinding, 3> bindings{{
-        {.binding = 0,
-         .descriptorType = vk::DescriptorType::eSampledImage,
-         .descriptorCount = 1,
-         .stageFlags = vk::ShaderStageFlagBits::eCompute},
-        {.binding = 1,
-         .descriptorType = vk::DescriptorType::eStorageImage,
-         .descriptorCount = 1,
-         .stageFlags = vk::ShaderStageFlagBits::eCompute},
-        {.binding = 2,
-         .descriptorType = vk::DescriptorType::eSampler,
-         .descriptorCount = 1,
-         .stageFlags = vk::ShaderStageFlagBits::eCompute,
-         .pImmutableSamplers = &*sampler},
-    }};
+    const vk::DescriptorSetLayoutBinding binding{
+        .binding = 0,
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment,
+    };
     desc_set_layout = Check<"create cas descriptor set layout">(
         device.createDescriptorSetLayoutUnique({
             .flags = vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR,
-            .bindingCount = bindings.size(),
-            .pBindings = bindings.data(),
+            .bindingCount = 1,
+            .pBindings = &binding,
         }));
     const vk::PushConstantRange push_constants{
-        .stageFlags = vk::ShaderStageFlagBits::eCompute,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment,
         .offset = 0,
         .size = 2 * 4 * sizeof(u32),
     };
@@ -419,17 +415,8 @@ void CasPass::Create(vk::Device device_, VmaAllocator allocator_) {
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constants,
     }));
-    const auto module = CompileSPV(CAS_COMP, device);
-    ASSERT(module);
-    pipeline = Check<"create cas pipeline">(device.createComputePipelineUnique(
-        {}, vk::ComputePipelineCreateInfo{
-                .stage = {.stage = vk::ShaderStageFlagBits::eCompute,
-                          .module = module,
-                          .pName = "main"},
-                .layout = *pipeline_layout,
-            }));
-    SetObjectName(device, *pipeline, "cas pipeline");
-    device.destroyShaderModule(module);
+    pipeline = MakeGraphicsPipeline(device, *pipeline_layout, FS_TRI_VERT, CAS_FRAG, ColorFormat,
+                                    "cas");
 }
 
 vk::ImageView CasPass::Render(vk::CommandBuffer cmdbuf, Scheduler& scheduler, vk::ImageView input,
@@ -449,7 +436,8 @@ vk::ImageView CasPass::Render(vk::CommandBuffer cmdbuf, Scheduler& scheduler, vk
             .mipLevels = 1,
             .arrayLayers = 1,
             .samples = vk::SampleCountFlagBits::e1,
-            .usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage,
+            .usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eColorAttachment |
+                     vk::ImageUsageFlagBits::eTransferSrc, // frame dump
             .initialLayout = vk::ImageLayout::eUndefined,
         });
         SetObjectName(device, static_cast<vk::Image>(output), "CAS output");
@@ -461,11 +449,6 @@ vk::ImageView CasPass::Render(vk::CommandBuffer cmdbuf, Scheduler& scheduler, vk
         }));
         cur_size = size;
     }
-    PipelineBarrier(cmdbuf, {Barrier(output, vk::PipelineStageFlagBits2::eAllCommands,
-                                     vk::AccessFlagBits2::eNone,
-                                     vk::PipelineStageFlagBits2::eComputeShader,
-                                     vk::AccessFlagBits2::eShaderStorageWrite,
-                                     vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral)});
     varAU4(const0);
     varAU4(const1);
     CasSetup(const0, const1, sharpness, AF1(size.width), AF1(size.height), AF1(size.width),
@@ -474,34 +457,106 @@ vk::ImageView CasPass::Render(vk::CommandBuffer cmdbuf, Scheduler& scheduler, vk
     std::memcpy(constants, const0, sizeof(const0));
     std::memcpy(constants + 4, const1, sizeof(const1));
 
-    const vk::DescriptorImageInfo input_info{.imageView = input,
+    PipelineBarrier(cmdbuf, {ToAttachment(output)});
+    const vk::DescriptorImageInfo input_info{.sampler = *sampler,
+                                             .imageView = input,
                                              .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
-    const vk::DescriptorImageInfo output_info{.imageView = *output_view,
-                                              .imageLayout = vk::ImageLayout::eGeneral};
-    const std::array writes{
-        vk::WriteDescriptorSet{.dstBinding = 0,
-                               .descriptorCount = 1,
-                               .descriptorType = vk::DescriptorType::eSampledImage,
-                               .pImageInfo = &input_info},
-        vk::WriteDescriptorSet{.dstBinding = 1,
-                               .descriptorCount = 1,
-                               .descriptorType = vk::DescriptorType::eStorageImage,
-                               .pImageInfo = &output_info},
+    const vk::WriteDescriptorSet write{.dstBinding = 0,
+                                       .descriptorCount = 1,
+                                       .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                                       .pImageInfo = &input_info};
+    const vk::RenderingAttachmentInfo attachment{
+        .imageView = *output_view,
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eDontCare,
+        .storeOp = vk::AttachmentStoreOp::eStore,
     };
-    cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute, *pipeline);
-    cmdbuf.pushDescriptorSetKHR(vk::PipelineBindPoint::eCompute, *pipeline_layout, 0, writes);
-    cmdbuf.pushConstants(*pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(constants),
-                         constants);
-    cmdbuf.dispatch((size.width + 15) / 16, (size.height + 15) / 16, 1);
-    PipelineBarrier(cmdbuf, {Barrier(output, vk::PipelineStageFlagBits2::eComputeShader,
-                                     vk::AccessFlagBits2::eShaderStorageWrite,
-                                     vk::PipelineStageFlagBits2::eAllCommands,
-                                     vk::AccessFlagBits2::eShaderRead, vk::ImageLayout::eGeneral,
-                                     vk::ImageLayout::eShaderReadOnlyOptimal)});
+    cmdbuf.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
+    cmdbuf.setViewport(0, vk::Viewport{.width = float(size.width),
+                                       .height = float(size.height),
+                                       .minDepth = 0.0f,
+                                       .maxDepth = 1.0f});
+    cmdbuf.setScissor(0, vk::Rect2D{.extent = size});
+    cmdbuf.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, *pipeline_layout, 0, write);
+    cmdbuf.pushConstants(*pipeline_layout, vk::ShaderStageFlagBits::eFragment, 0,
+                         sizeof(constants), constants);
+    cmdbuf.beginRendering(vk::RenderingInfo{
+        .renderArea = {.extent = size},
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &attachment,
+    });
+    cmdbuf.draw(3, 1, 0, 0);
+    cmdbuf.endRendering();
+    PipelineBarrier(cmdbuf, {AttachmentToRead(output, vk::PipelineStageFlagBits2::eAllCommands)});
     if (EmulatorSettings.IsVkHostMarkersEnabled()) {
         cmdbuf.endDebugUtilsLabelEXT();
     }
     return *output_view;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Timing
+
+namespace {
+double NowSeconds() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+} // namespace
+
+void PostFxTimer::Create(vk::Device device_, float timestamp_period_ns) {
+    const char* env = std::getenv("TLG_POSTFX_PROFILE");
+    if (!env || env[0] != '1') {
+        return;
+    }
+    device = device_;
+    period_ns = timestamp_period_ns;
+    pool = Check<"create postfx query pool">(device.createQueryPoolUnique({
+        .queryType = vk::QueryType::eTimestamp,
+        .queryCount = Ring * Stamps,
+    }));
+    device.resetQueryPool(*pool, 0, Ring * Stamps);
+    window_start = NowSeconds();
+    std::printf("PostFX profile: on\n");
+}
+
+void PostFxTimer::Begin(vk::CommandBuffer cmdbuf) {
+    cmdbuf.resetQueryPool(*pool, slot * Stamps, Stamps);
+    cmdbuf.writeTimestamp2(vk::PipelineStageFlagBits2::eAllCommands, *pool, slot * Stamps);
+}
+
+void PostFxTimer::Stamp(vk::CommandBuffer cmdbuf, Stage stage) {
+    cmdbuf.writeTimestamp2(vk::PipelineStageFlagBits2::eAllCommands, *pool,
+                           slot * Stamps + 1 + stage);
+}
+
+void PostFxTimer::End(bool smaa, bool cas, bool color) {
+    written[slot] = true;
+    slot = (slot + 1) % Ring;
+    // The slot written Ring - 1 frames ago, when the GPU is done with it (never waits).
+    const u32 old = (slot + 1) % Ring;
+    std::array<u64, Stamps> stamps{};
+    if (written[old] &&
+        device.getQueryPoolResults(*pool, old * Stamps, Stamps, sizeof(stamps), stamps.data(),
+                                   sizeof(u64), vk::QueryResultFlagBits::e64) ==
+            vk::Result::eSuccess) {
+        for (u32 i = 0; i < StageCount; ++i) {
+            total_ms[i] += double(stamps[i + 1] - stamps[i]) * period_ns / 1e6;
+        }
+        ++frames;
+    }
+    const double now = NowSeconds();
+    if (now - window_start < 5.0 || frames == 0) {
+        return;
+    }
+    std::printf("PostFX profile: %u frames; GPU ms/frame: SMAA %.3f%s, FSR 1/RCAS %.3f, CAS %.3f%s, "
+                "post process %.3f%s\n",
+                frames, total_ms[Smaa] / frames, smaa ? "" : " (off)", total_ms[FsrRcas] / frames,
+                total_ms[Cas] / frames, cas ? "" : " (off)", total_ms[PostProcess] / frames,
+                color ? " (with color)" : "");
+    total_ms = {};
+    frames = 0;
+    window_start = now;
 }
 
 } // namespace Vulkan::HostPasses

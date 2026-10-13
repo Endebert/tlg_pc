@@ -124,6 +124,7 @@ private:
     HostPasses::PostProcessingPass pp_pass;
     HostPasses::SmaaPass smaa_pass;  ///< tlg: tlg.ini smaa
     HostPasses::CasPass cas_pass;    ///< tlg: tlg.ini cas
+    HostPasses::PostFxTimer postfx_timer; ///< tlg: TLG_POSTFX_PROFILE=1
     AmdGpu::Liverpool* liverpool;
     Scheduler draw_scheduler;
     std::deque<u64> recent_frame_ticks; ///< tlg: TLG_FRAMES_AHEAD bound (PrepareFrame)

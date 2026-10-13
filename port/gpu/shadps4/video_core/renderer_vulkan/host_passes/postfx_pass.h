@@ -27,6 +27,10 @@ public:
     /// `input` is in ShaderReadOnlyOptimal; returns a view of the same size in that layout.
     vk::ImageView Render(vk::CommandBuffer cmdbuf, Scheduler& scheduler, vk::ImageView input,
                          vk::Extent2D size, bool input_linear);
+    /// The image behind Render's result (tests).
+    vk::Image OutputImage() const {
+        return output.image;
+    }
 
 private:
     struct Target {
@@ -51,7 +55,9 @@ private:
     vk::Extent2D cur_size{};
 };
 
-/// AMD FidelityFX CAS (MIT), sharpen only: an alternative to FSR 1's RCAS.
+/// AMD FidelityFX CAS (MIT), sharpen only: an alternative to FSR 1's RCAS. A pixel shader:
+/// the compute version (like fsr.comp) wrote nothing in the game's frames on the NVIDIA 595
+/// driver although it passed postfx-test.
 class CasPass {
 public:
     void Create(vk::Device device, VmaAllocator allocator);
@@ -59,6 +65,9 @@ public:
     /// `sharpness` 0..1; `input` in ShaderReadOnlyOptimal, output the same size and layout.
     vk::ImageView Render(vk::CommandBuffer cmdbuf, Scheduler& scheduler, vk::ImageView input,
                          vk::Extent2D size, float sharpness);
+    vk::Image OutputImage() const {
+        return output;
+    }
 
 private:
     vk::Device device{};
@@ -70,6 +79,36 @@ private:
     VideoCore::UniqueImage output;
     vk::UniqueImageView output_view;
     vk::Extent2D cur_size{};
+};
+
+/// TLG_POSTFX_PROFILE=1: GPU time of each presenter filter (timestamps around SMAA, FSR 1/RCAS,
+/// CAS and the post process pass), read without waiting a few frames later, printed every 5 s.
+class PostFxTimer {
+public:
+    enum Stage : u32 { Smaa, FsrRcas, Cas, PostProcess, StageCount };
+
+    void Create(vk::Device device, float timestamp_period_ns);
+    bool Enabled() const {
+        return static_cast<bool>(pool);
+    }
+    /// Starts this frame's slot (outside a render pass).
+    void Begin(vk::CommandBuffer cmdbuf);
+    /// The end of `stage` (skipped stages measure 0).
+    void Stamp(vk::CommandBuffer cmdbuf, Stage stage);
+    /// After the last stamp: reads an old slot, prints the averages.
+    void End(bool smaa, bool cas, bool color);
+
+private:
+    static constexpr u32 Ring = 8;
+    static constexpr u32 Stamps = StageCount + 1;
+    vk::Device device{};
+    vk::UniqueQueryPool pool{};
+    double period_ns = 1.0;
+    u32 slot = 0;
+    std::array<bool, Ring> written{};
+    std::array<double, StageCount> total_ms{};
+    u32 frames = 0;
+    double window_start = 0;
 };
 
 } // namespace Vulkan::HostPasses
