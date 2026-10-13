@@ -127,6 +127,11 @@ void Scheduler::BeginRendering(const RenderState& new_state) {
 }
 
 void Scheduler::EndRendering() {
+    // tlg: is_rendering belongs to the draw recording thread (stage B) while draw packets are in
+    // flight: drain first (owner hook), or a stale "not rendering" lets the next command (a
+    // stage A CopyBuffer) be recorded inside the render pass stage B opens meanwhile, which
+    // crashed the NVIDIA driver in the recorder thread (intro of a New Game; GR2 gameplay).
+    CheckOwner(__builtin_return_address(0));
     if (!is_rendering) {
         return;
     }
