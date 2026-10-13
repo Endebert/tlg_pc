@@ -47,6 +47,11 @@ inline int ParseResolution(std::string_view text) {
 inline int ParseEngineFps(int value) {
     return IndexOf(EngineFps, value, -1) >= 0 ? value : 120;
 }
+/// tlg: the launch's TLG_ENGINE_FPS (launcher/tlg_run.py, TLG_FPS): 30 unpatched, 60 with the
+/// 60 FPS patches, 240 unlocked; another value is taken as a 60/120/240 ceiling.
+inline int ParseAppliedEngineFps(int value) {
+    return value == 30 ? 30 : ParseEngineFps(value);
+}
 
 /// Frames the GPU command thread may queue ahead of the GPU; 0 = unbounded.
 inline constexpr std::array<int, 3> FramesQueued = {1, 2, 0};

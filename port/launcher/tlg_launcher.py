@@ -36,6 +36,12 @@ TEXT = {
     'Borderless': ('Borderless window', 'Janela sem borda'),
     'Fullscreen': ('Fullscreen', 'Tela cheia'),
     'vsync': ('VSync', 'VSync'),
+    'frame_rate': ('Frame rate (experimental)', 'Taxa de quadros (experimental)'),
+    'fps_30': ('30 FPS (as on PS4)', '30 FPS (como no PS4)'),
+    'fps_60': ('60 FPS', '60 FPS'),
+    'fps_unlocked': ('Unlocked (up to the display)', 'Livre (até a taxa do monitor)'),
+    'fps_hint': ('60/unlocked patch eboot 1.03 in memory; see docs/60fps.md',
+                 '60/livre alteram o eboot 1.03 na memória; ver docs/60fps.md'),
     'show_fps': ('Show FPS overlay at start (F10 toggles)', 'Mostrar overlay de FPS ao iniciar (F10 alterna)'),
     'vram': ('Texture cache budget (MB of VRAM)', 'Orçamento do cache de texturas (MB de VRAM)'),
     'vram_hint': ('5600 for 6 GB cards, 7000 for 8 GB', '5600 para placas de 6 GB, 7000 para 8 GB'),
@@ -176,6 +182,9 @@ class Launcher:
         self.combo(video, 0, 'display_mode', DISPLAY_MODES, lambda k: self.t(k))
         self.check(video, 1, 'vsync')
         self.check(video, 2, 'show_fps')
+        self.combo(video, 5, 'frame_rate', tlg_run.FRAME_RATES, lambda k: self.t(f'fps_{k}'))
+        ttk.Label(video, text=self.t('fps_hint'), foreground='#777', wraplength=320).grid(
+            row=6, column=0, columnspan=2, sticky='w')
         ttk.Label(video, text=self.t('vram'), wraplength=220).grid(row=3, column=0, sticky='w', pady=(6, 0))
         vram = tk.IntVar(value=int(self.settings['vram_budget_mb']))
         self.vars['vram_budget_mb'] = vram
@@ -309,6 +318,7 @@ class Launcher:
             return
         self.lines.put(f"{self.t('running')} {log}")
         with open(log, 'w', encoding='utf-8') as out:
+            out.write(f'Frame rate: requested {tlg_run.frame_rate(self.settings)}, applied {tlg_run.applied_frame_rate}\n')
             for line in self.process.stdout:
                 out.write(line)
                 out.flush()
