@@ -188,12 +188,17 @@ endif()
 target_link_libraries(tlggpu PRIVATE ffx-vulkan::portable ffx-vulkan::fsr4-v07-vulkan)
 target_link_libraries(tlggpu PUBLIC Vulkan::Headers fmt::fmt Boost::headers magic_enum::magic_enum
     tsl::robin_map GPUOpen::VulkanMemoryAllocator PkgConfig::XXHASH PkgConfig::SDL3 PkgConfig::FFMPEG miniz::miniz Zydis::Zydis sirit)
+# xbyak is header-only: the distribution's copy when there is one (Fedora xbyak-devel), else the
+# submodule (MSYS2 and Ubuntu do not package it).
+find_path(XBYAK_SYSTEM_INCLUDE xbyak/xbyak.h)
+if (NOT XBYAK_SYSTEM_INCLUDE)
+    target_include_directories(tlggpu PRIVATE third_party/xbyak)
+endif()
 if (WIN32)
     # Guest code is entered with the System V ABI; NOMINMAX/WIN32_LEAN_AND_MEAN keep
     # <windows.h> out of the way of std::min/max and the Vulkan/SDL headers.
     target_compile_definitions(tlggpu PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(tlggpu PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/shim/tlg_win_compat.h)
-    target_include_directories(tlggpu PRIVATE third_party/xbyak)
     target_link_libraries(tlggpu PUBLIC Vulkan::Vulkan ws2_32 bcrypt ntdll synchronization winmm pdh)
 else()
     target_link_libraries(tlggpu PUBLIC PkgConfig::X11)

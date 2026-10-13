@@ -61,6 +61,7 @@ jobs:
           name: tlg-linux-x86_64
           path: port/dist/tlg-linux-x86_64.tar.gz
           if-no-files-found: error
+          retention-days: 3
 
   windows:
     runs-on: windows-latest
@@ -109,21 +110,27 @@ jobs:
           name: tlg-windows-x86_64
           path: port/dist/tlg-windows-x86_64.zip
           if-no-files-found: error
+          retention-days: 3
 
   release:
     needs: [linux, windows]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
       - name: Publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
           ls -la dist
+          test -f dist/tlg-linux-x86_64.tar.gz && test -f dist/tlg-windows-x86_64.zip
           short=${GITHUB_SHA::7}
           cat > notes.md <<NOTES
           Build automático do commit ${short}. **Nenhum arquivo do jogo incluído**: veja o README-player.md dentro do pacote para o que copiar do seu PS4.
@@ -133,10 +140,35 @@ jobs:
           - Windows 10/11 64-bit: \`tlg-windows-x86_64.zip\` (ainda não testado em jogo / not yet tested in game)
           NOTES
           if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            # Versioned releases are kept forever; nothing below ever deletes a v* release.
             gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md --prerelease
-          else
-            # One nightly at a time: the previous release and its tag go first.
-            gh release delete nightly --cleanup-tag --yes || true
-            gh release create nightly dist/* --target "$GITHUB_SHA" --prerelease \
-              --title "Nightly ($(date -u +%Y-%m-%d) · ${short})" --notes-file notes.md
+            exit 0
           fi
+          # Nightly: upload everything into a draft first, so the previous nightly stays
+          # available until the new build is fully uploaded. A failure here leaves it untouched.
+          staging="nightly-staging-${GITHUB_RUN_ID}"
+          gh release create "$staging" dist/* --draft --target "$GITHUB_SHA" --prerelease \
+            --title "Nightly ($(date -u +%Y-%m-%d) · ${short})" --notes-file notes.md
+          n=$(gh release view "$staging" --json assets --jq '.assets | length')
+          [[ $n -ge 2 ]] || { echo "staging release has $n assets"; exit 1; }
+          # Swap: drop the old nightly and its tag, then publish the draft as "nightly".
+          gh release delete nightly --cleanup-tag --yes || true
+          for try in 1 2 3; do
+            gh release edit "$staging" --tag nightly --target "$GITHUB_SHA" --draft=false --prerelease && break
+            sleep 10
+          done
+          gh release view nightly --json tagName,isDraft,assets \
+            --jq '"\(.tagName) draft=\(.isDraft) assets=\([.assets[].name] | join(","))"'
+          [[ $(gh release view nightly --json isDraft --jq .isDraft) == false ]]
+      - name: Delete older builds
+        # Only after the new nightly is live: the previous runs and their artifacts go, the
+        # current run (the one that produced this nightly) stays. Releases are not touched,
+        # apart from leftover nightly-staging drafts of failed runs.
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -uo pipefail
+          gh release list --limit 100 --json tagName,isDraft \
+            --jq '.[] | select(.isDraft and (.tagName | startswith("nightly-staging-"))) | .tagName' |
+            while read -r t; do gh release delete "$t" --yes || true; done
+          gh run list --workflow build.yml --status completed --limit 200 --json databaseId --jq '.[].databaseId' |
+            grep -vx "$GITHUB_RUN_ID" | xargs -r -n1 gh run delete || true
