@@ -263,6 +263,28 @@ void SliderRow(const char* label, std::atomic<int>& value, int lo, int hi, const
     ImGui::PopID();
 }
 
+const char* TL(const char* en, const char* pt);
+
+// A float slider over a color range, with a button back to its neutral value.
+void FloatSliderRow(const char* label, std::atomic<float>& value, const TlgGraphics::ColorRange& range,
+                    const char* help) {
+    Row(label);
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const char* reset = TL("Reset", "Padrão");
+    ImGui::SetNextItemWidth(-(ImGui::CalcTextSize(reset).x + style.FramePadding.x * 2 + style.ItemSpacing.x));
+    float v = value;
+    if (ImGui::SliderFloat("##value", &v, range.min, range.max, "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+        Store(value, TlgGraphics::ClampColor(range, v), true);
+    }
+    Help(help);
+    ImGui::SameLine();
+    if (ImGui::SmallButton(reset)) {
+        Store(value, range.neutral, true);
+    }
+    Help(help);
+    ImGui::PopID();
+}
+
 const char* UpscalerLabel(int upscaler) {
     switch (upscaler) {
     case TlgSettings::UpscalerFsr3: return "FSR 3.1";
@@ -328,14 +350,44 @@ void ImageTab() {
     if (BeginRows("##scaling")) {
         CheckRow(TL("Upscale with FSR 1", "Ampliar com FSR 1"), s.fsr1,
                  TL("Enlarges the game image when it is smaller than the window (spatial filter, no shimmer).", "Amplia a imagem do jogo quando ela é menor que a janela (filtro espacial, sem tremor)."));
-        ImGui::BeginDisabled(rcas_blocked);
-        CheckRow(TL("Sharpening (RCAS)", "Nitidez (RCAS)"), s.rcas,
-                 rcas_blocked && downscaling ? TL("No effect: the game's image is larger than the window.", "Sem efeito: a imagem do jogo é maior que a janela.")
-                 : rcas_blocked              ? TL("Needs FSR 1: the game's image is smaller than the window.", "Precisa do FSR 1: a imagem do jogo é menor que a janela.")
-                                             : TL("Sharpens the final image.", "Deixa a imagem final mais nítida."));
-        ImGui::EndDisabled();
-        ImGui::BeginDisabled(!s.rcas || rcas_blocked);
-        SliderRow(TL("Sharpening strength", "Intensidade da nitidez"), s.rcas_strength, 0, 100, "%d%%", TL("How strong the sharpening is.", "Quão forte é a nitidez."));
+        // tlg: one sharpening filter at a time: FSR 1's RCAS or AMD CAS (stored as rcas / cas).
+        static const char* const filters[] = {TL("Off", "Desligada"), "RCAS (FSR 1)", "CAS (AMD)"};
+        int filter = s.cas ? 2 : s.rcas ? 1 : 0;
+        Row(TL("Sharpening", "Nitidez"));
+        if (ImGui::Combo("##value", &filter, filters, 3)) {
+            Store(s.rcas, filter == 1, true);
+            Store(s.cas, filter == 2, true);
+        }
+        Help(rcas_blocked && !s.cas && downscaling ? TL("No effect: the game's image is larger than the window.", "Sem efeito: a imagem do jogo é maior que a janela.")
+             : rcas_blocked && !s.cas            ? TL("RCAS needs FSR 1 here: the game's image is smaller than the window. CAS works at any size.", "O RCAS precisa do FSR 1 aqui: a imagem do jogo é menor que a janela. O CAS funciona em qualquer tamanho.")
+                                                 : TL("Sharpens the final image. RCAS comes with FSR 1; CAS (AMD Contrast Adaptive Sharpening) is softer on noise and works at any size.", "Deixa a imagem final mais nítida. O RCAS vem com o FSR 1; o CAS (AMD Contrast Adaptive Sharpening) realça menos o ruído e funciona em qualquer tamanho."));
+        ImGui::PopID();
+        if (s.cas) {
+            SliderRow(TL("Sharpening strength", "Intensidade da nitidez"), s.cas_strength, 0, 100, "%d%%", TL("How strong the CAS sharpening is.", "Quão forte é a nitidez do CAS."));
+        } else {
+            ImGui::BeginDisabled(!s.rcas || rcas_blocked);
+            SliderRow(TL("Sharpening strength", "Intensidade da nitidez"), s.rcas_strength, 0, 100, "%d%%", TL("How strong the sharpening is.", "Quão forte é a nitidez."));
+            ImGui::EndDisabled();
+        }
+        ImGui::EndTable();
+    }
+    ImGui::SeparatorText(TL("Anti-aliasing", "Anti-aliasing"));
+    if (BeginRows("##antialiasing")) {
+        CheckRow("SMAA 1x", s.smaa,
+                 TL("Smooths jagged edges (feathers, grass, railings) on the final image. The game draws its HUD and subtitles into the same image, so text edges are smoothed too. About 0.3 ms per frame at 1080p.",
+                    "Suaviza o serrilhado (penas, grama, grades) na imagem final. O jogo desenha o HUD e as legendas na mesma imagem, então as bordas do texto também são suavizadas. Cerca de 0,3 ms por quadro em 1080p."));
+        ImGui::EndTable();
+    }
+    ImGui::SeparatorText(TL("Color", "Cor"));
+    if (BeginRows("##color")) {
+        CheckRow(TL("Color adjustments", "Ajustes de cor"), s.color_adjust,
+                 TL("Brightness, contrast, saturation and gamma of the final image (the HUD included). No measurable cost.",
+                    "Brilho, contraste, saturação e gama da imagem final (o HUD incluído). Sem custo mensurável."));
+        ImGui::BeginDisabled(!s.color_adjust);
+        FloatSliderRow(TL("Brightness", "Brilho"), s.brightness, G::Brightness, TL("Adds light or shadow evenly; 0 is unchanged.", "Clareia ou escurece por igual; 0 não altera."));
+        FloatSliderRow(TL("Contrast", "Contraste"), s.contrast, G::Contrast, TL("Spreads tones away from mid gray; 1 is unchanged.", "Afasta os tons do cinza médio; 1 não altera."));
+        FloatSliderRow(TL("Saturation", "Saturação"), s.saturation, G::Saturation, TL("Color intensity: 0 is black and white, 1 is unchanged.", "Intensidade das cores: 0 é preto e branco, 1 não altera."));
+        FloatSliderRow(TL("Gamma", "Gama"), s.color_gamma, G::Gamma, TL("Above 1 lightens the midtones, below 1 darkens them; blacks and whites stay.", "Acima de 1 clareia os tons médios, abaixo de 1 escurece; pretos e brancos ficam."));
         ImGui::EndDisabled();
         ImGui::EndTable();
     }
@@ -347,7 +399,7 @@ void ImageTab() {
         std::snprintf(text, sizeof(text), "%d x %d", ww, wh);
         InfoRow(TL("Windowed", "Janela"), text);
         InfoRow("FSR 1", !s.fsr1 ? TL("off", "desligado") : upscaling ? TL("active", "ativo") : TL("no effect (image not smaller than window)", "sem efeito (imagem não é menor que a janela)"));
-        InfoRow(TL("Sharpening", "Nitidez"), s.rcas_applied ? TL("applied", "aplicada") : TL("not applied", "não aplicada"));
+        InfoRow(TL("Sharpening", "Nitidez"), !s.rcas_applied ? TL("not applied", "não aplicada") : s.cas ? TL("applied (CAS)", "aplicada (CAS)") : TL("applied (RCAS)", "aplicada (RCAS)"));
         ImGui::EndTable();
     }
 }

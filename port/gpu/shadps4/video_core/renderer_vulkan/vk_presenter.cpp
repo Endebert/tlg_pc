@@ -15,6 +15,7 @@
 #include "tlg_overlay.h"
 #include "tlg_settings.h"
 #include "tlg_graphics.h"
+#include "video_core/renderer_vulkan/vk_gpu_profiler.h"
 #include "video_core/renderer_vulkan/vk_temporal_upscaler.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
 #include "video_core/renderer_vulkan/vk_warmup_inbox.h"
@@ -152,6 +153,8 @@ Presenter::Presenter(Frontend::WindowSDL& window_, AmdGpu::Liverpool* liverpool_
     }
 
     fsr_pass.Create(device, instance.GetAllocator(), num_images);
+    smaa_pass.Create(device, instance.GetAllocator());
+    cas_pass.Create(device, instance.GetAllocator());
     pp_pass.Create(device, swapchain.GetSurfaceFormat().format);
     TlgOverlay::Init(instance, swapchain.GetSurfaceFormat().format, num_images);
 
@@ -477,26 +480,63 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
     expected_ratio = static_cast<float>(image_size.width) / static_cast<float>(image_size.height);
 
     // tlg: FSR 1, RCAS and its strength come from the in-game menu, every frame.
+    TlgSettings::ReloadIfRequested();
     const auto& graphics = TlgSettings::Get();
+    // Vulkan has no sRGB variant of the 10-bit format, so an A2R10G10B10Srgb buffer reaches
+    // the post process pass still sRGB encoded and has to be decoded there instead.
+    pp_settings.srgb_input =
+        attribute.attrib.pixel_format == Libraries::VideoOut::PixelFormat::A2R10G10B10Srgb;
+    // tlg: TLG_GPU_PROFILE=1 times each filter on the final image ("present: ..." labels).
+    auto* profiler = GpuProfiler::Get();
+    const auto mark = [profiler](u64 key, const char* name) {
+        if (profiler) {
+            profiler->Mark(key, [name] { return std::string{"present: "} + name; });
+        }
+    };
+    // tlg: SMAA 1x on the game's image (its UI included: the game draws it into the same buffer),
+    // at the game's resolution, before any scaling.
+    if (graphics.smaa) {
+        mark(0x7f0f'0001ull, "SMAA 1x");
+        image_view = smaa_pass.Render(cmdbuf, draw_scheduler, image_view, image_size,
+                                      !pp_settings.srgb_input);
+    }
+    // CAS replaces RCAS: FSR 1 still upscales first when it is on.
+    const bool use_cas = graphics.cas;
+    mark(0x7f0f'0002ull, "FSR 1 / RCAS");
     fsr_settings.enable = graphics.fsr1;
-    fsr_settings.use_rcas = graphics.rcas;
+    fsr_settings.use_rcas = graphics.rcas && !use_cas;
     fsr_settings.rcas_attenuation = TlgGraphics::RcasAttenuation(graphics.rcas_strength);
     TlgSettings::Get().image_width = int(image_size.width);
     TlgSettings::Get().image_height = int(image_size.height);
     TlgSettings::Get().window_width = int(frame->width);
     TlgSettings::Get().window_height = int(frame->height);
+    const bool fsr_runs =
+        TlgGraphics::FsrPassRuns(fsr_settings.enable, fsr_settings.use_rcas, int(image_size.width),
+                                 int(image_size.height), int(frame->width), int(frame->height));
     TlgSettings::Get().rcas_applied =
-        fsr_settings.use_rcas &&
-        TlgGraphics::FsrPassRuns(fsr_settings.enable, true, int(image_size.width), int(image_size.height),
-                                  int(frame->width), int(frame->height));
+        use_cas || (fsr_settings.use_rcas &&
+                    TlgGraphics::FsrPassRuns(fsr_settings.enable, true, int(image_size.width),
+                                             int(image_size.height), int(frame->width),
+                                             int(frame->height)));
     image_view = fsr_pass.Render(cmdbuf, image_view, image_size, {frame->width, frame->height},
                                  fsr_settings, frame->is_hdr);
+    // The FSR pass outputs at the window's size.
+    const vk::Extent2D filtered_size = fsr_runs ? vk::Extent2D{frame->width, frame->height} : image_size;
+    if (use_cas) {
+        mark(0x7f0f'0003ull, "CAS");
+        image_view = cas_pass.Render(cmdbuf, draw_scheduler, image_view, filtered_size,
+                                     TlgGraphics::CasSharpness(graphics.cas_strength));
+    }
 
-    // Vulkan has no sRGB variant of the 10-bit format, so an A2R10G10B10Srgb buffer reaches
-    // the post process pass still sRGB encoded and has to be decoded there instead.
-    pp_settings.srgb_input =
-        attribute.attrib.pixel_format == Libraries::VideoOut::PixelFormat::A2R10G10B10Srgb;
+    // tlg: the color adjustments run in the post process pass (no extra pass).
+    pp_settings.color_adjust = graphics.color_adjust && !frame->is_hdr ? 1u : 0u;
+    pp_settings.brightness = graphics.brightness;
+    pp_settings.contrast = graphics.contrast;
+    pp_settings.saturation = graphics.saturation;
+    pp_settings.user_gamma = graphics.color_gamma;
+    mark(0x7f0f'0004ull, graphics.color_adjust ? "post process + color" : "post process");
     pp_pass.Render(cmdbuf, image_view, image_size, *frame, pp_settings);
+    mark(0x7f0f'0005ull, "after post process");
     if (frame_dump) {
         // The presented image as the swapchain blit reads it (General after the pass).
         const vk::MemoryBarrier2 done{.srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,

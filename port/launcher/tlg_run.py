@@ -98,6 +98,19 @@ def ngs2_module(settings):
     return path if settings.get('native_audio', True) and path.is_file() else None
 
 
+def read_ini(path):
+    """The key=value pairs of tlg.ini (empty when the file does not exist yet)."""
+    values = {}
+    try:
+        for line in path.read_text(encoding='utf-8').splitlines():
+            if '=' in line and not line.lstrip().startswith('#'):
+                key, value = line.split('=', 1)
+                values[key.strip()] = value.strip()
+    except OSError:
+        pass
+    return values
+
+
 def update_ini(path, values):
     """Sets keys in tlg.ini (the in-game menu's file), keeping every other line."""
     lines = path.read_text(encoding='utf-8').splitlines() if path.is_file() else ['# tlg settings']

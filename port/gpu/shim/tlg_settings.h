@@ -67,6 +67,13 @@ struct Values {
     std::atomic<bool> fsr1{false};
     std::atomic<bool> rcas{true};
     std::atomic<int> rcas_strength{75};
+    /// Filters on the final image (postfx_pass.h, post_process.frag), all off by default:
+    /// SMAA 1x, AMD CAS (replaces RCAS while on) and the color adjustments.
+    std::atomic<bool> smaa{false};
+    std::atomic<bool> cas{false};
+    std::atomic<int> cas_strength{50};
+    std::atomic<bool> color_adjust{false};
+    std::atomic<float> brightness{0.0f}, contrast{1.0f}, saturation{1.0f}, color_gamma{1.0f};
     /// Set by the presenter: sharpening ran on the last frame (it needs FSR 1 when the game's
     /// image is smaller than the window).
     std::atomic<bool> rcas_applied{false};
@@ -123,6 +130,9 @@ int RenderPreset();
 bool ResolutionNeedsRestart();
 /// A startup graphics option differs from the one this launch started with.
 bool GraphicsNeedRestart();
+/// TLG_SETTINGS_RELOAD=<file> (tests): when the file appears it is removed and tlg.ini is read
+/// again, so a script can switch live options without the menu. Called once per frame.
+void ReloadIfRequested();
 /// Writes the file (menu changes).
 void Save();
 

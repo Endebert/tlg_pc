@@ -105,6 +105,22 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.rcas = i != 0;
     } else if (key == "rcas_strength") {
         v.rcas_strength = TlgGraphics::ParseRcasStrength(value.empty() ? -1 : i);
+    } else if (key == "smaa") {
+        v.smaa = i != 0;
+    } else if (key == "cas") {
+        v.cas = i != 0;
+    } else if (key == "cas_strength") {
+        v.cas_strength = TlgGraphics::ParseRcasStrength(value.empty() ? -1 : i, 50);
+    } else if (key == "color_adjust") {
+        v.color_adjust = i != 0;
+    } else if (key == "color_brightness") {
+        v.brightness = TlgGraphics::ClampColor(TlgGraphics::Brightness, f);
+    } else if (key == "color_contrast") {
+        v.contrast = TlgGraphics::ClampColor(TlgGraphics::Contrast, value.empty() ? 1.0f : f);
+    } else if (key == "color_saturation") {
+        v.saturation = TlgGraphics::ClampColor(TlgGraphics::Saturation, value.empty() ? 1.0f : f);
+    } else if (key == "color_gamma") {
+        v.color_gamma = TlgGraphics::ClampColor(TlgGraphics::Gamma, value.empty() ? 1.0f : f);
     } else if (key == "frames_queued") {
         v.frames_queued = TlgGraphics::ParseFramesQueued(value.empty() ? -1 : i);
     } else if (key == "render_resolution") {
@@ -153,20 +169,37 @@ Values& Get() {
     return values;
 }
 
+namespace {
+bool ReadFile(Values& v) {
+    FILE* file = std::fopen(Path(), "r");
+    if (!file) {
+        return false;
+    }
+    char line[256];
+    while (std::fgets(line, sizeof(line), file)) {
+        std::string text{line};
+        text.erase(text.find_last_not_of(" \t\r\n") + 1);
+        const auto eq = text.find('=');
+        if (text.empty() || text[0] == '#' || eq == std::string::npos) {
+            continue;
+        }
+        Set(v, text.substr(0, eq), text.substr(eq + 1));
+    }
+    std::fclose(file);
+    return true;
+}
+} // namespace
+
+void ReloadIfRequested() {
+    static const char* trigger = std::getenv("TLG_SETTINGS_RELOAD");
+    if (trigger && trigger[0] && std::remove(trigger) == 0 && ReadFile(Get())) {
+        std::printf("Settings: reloaded %s\n", Path());
+    }
+}
+
 void Load() {
     auto& v = Get();
-    if (FILE* file = std::fopen(Path(), "r")) {
-        char line[256];
-        while (std::fgets(line, sizeof(line), file)) {
-            std::string text{line};
-            text.erase(text.find_last_not_of(" \t\r\n") + 1);
-            const auto eq = text.find('=');
-            if (text.empty() || text[0] == '#' || eq == std::string::npos) {
-                continue;
-            }
-            Set(v, text.substr(0, eq), text.substr(eq + 1));
-        }
-        std::fclose(file);
+    if (ReadFile(v)) {
         std::printf("Settings: %s\n", Path());
     }
     // Environment overrides (scripts, A/B tests).
@@ -184,7 +217,8 @@ void Load() {
         {"TLG_ASYNC_SHADERS", "async_shaders"},      {"TLG_DEFERRED_READBACK", "deferred_readback"},
         {"TLG_STALE_READBACK", "stale_readback"},     {"TLG_FSR1", "fsr1"},
         {"TLG_RCAS", "rcas"},                        {"TLG_FRAMES_AHEAD", "frames_queued"},
-        {"TLG_SHOW_FPS", "show_fps"},
+        {"TLG_SHOW_FPS", "show_fps"},             {"TLG_SMAA", "smaa"},
+        {"TLG_CAS", "cas"},                          {"TLG_COLOR_ADJUST", "color_adjust"},
     };
     for (const auto& [env, key] : env_keys) {
         if (const char* value = std::getenv(env); value && value[0]) {
@@ -310,6 +344,12 @@ void Save() {
                  TlgGraphics::Resolutions[std::clamp(v.render_resolution.load(), 0, 5)].data(),
                  v.engine_fps.load(), int(v.deferred_readback.load()), int(v.stale_readback.load()),
                  int(v.restart_unconfirmed.load()));
+    std::fprintf(file,
+                 "smaa=%d\ncas=%d\ncas_strength=%d\ncolor_adjust=%d\ncolor_brightness=%.2f\n"
+                 "color_contrast=%.2f\ncolor_saturation=%.2f\ncolor_gamma=%.2f\n",
+                 int(v.smaa.load()), int(v.cas.load()), v.cas_strength.load(),
+                 int(v.color_adjust.load()), v.brightness.load(), v.contrast.load(),
+                 v.saturation.load(), v.color_gamma.load());
     // Read by run.sh at start.
     std::fprintf(file, "live_resolution=%s\n", v.live_resolution < 0 ? "auto"
                                                   : v.live_resolution ? "1" : "0");
