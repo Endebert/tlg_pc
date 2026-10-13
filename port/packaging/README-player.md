@@ -39,6 +39,28 @@ No Linux, `./install_desktop.sh` adiciona o jogo ao menu de aplicativos.
 - **Insert** (ou R3 + L2 no controle): abre o menu do port (imagem, desempenho, overlay)
 - Controles de PS4/PS5, Xbox e 8BitDo funcionam via SDL3, por USB ou Bluetooth.
 
+### Teclado e mouse
+
+Com a janela do jogo em foco, o mouse fica preso e gira a câmera. **Esc** solta o mouse; um clique na janela prende de novo. Abrir o menu do port (Insert) também solta o mouse.
+
+| Ação no jogo | Botão do PS4 | Teclado e mouse |
+|---|---|---|
+| Andar | Analógico esquerdo | W A S D |
+| Câmera | Analógico direito | Mouse (ou as setas) |
+| Pular | X | Espaço |
+| Agarrar, segurar | Triângulo | Clique esquerdo ou Q |
+| Chamar o Trico | R1 | Clique direito ou 3 |
+| | Quadrado | E ou clique do meio |
+| | Círculo | Shift esquerdo |
+| | L1 / L2 / R2 | 1 / R / F |
+| | L3 / R3 | Z / C |
+| | Direcional | I J K L |
+| Menu | Options | Enter |
+| Modo foto / pausa | Touchpad (esquerda / direita) | Tab / Backspace |
+
+- No launcher, a caixa **Controles** liga o mouse, muda a sensibilidade e inverte o eixo Y. **Teclas e botões do mouse…** remapeia cada botão: clique em *Definir* e aperte a tecla ou o botão do mouse (os botões laterais e a roda também servem). Vale na próxima vez que o jogo abrir.
+- No jogo, a aba **Controles** do menu do port (Insert) ajusta sensibilidade, eixo Y, suavização, aceleração e anti-zona morta na hora.
+
 ### Onde ficam as coisas
 
 - Saves: `user/savedata/`, ao lado do executável (guarde essa pasta ao atualizar)
@@ -83,6 +105,28 @@ On Linux, `./install_desktop.sh` adds the game to the applications menu.
 - **F10**: toggles the FPS counter
 - **Insert** (or R3 + L2 on a controller): opens the port's menu (image, performance, overlay)
 - PS4/PS5, Xbox and 8BitDo controllers work through SDL3, over USB or Bluetooth.
+
+### Keyboard and mouse
+
+While the game window has focus, it takes the mouse and the mouse turns the camera. **Esc** releases the mouse; a click in the window takes it back. Opening the port's menu (Insert) also releases it.
+
+| In game | PS4 button | Keyboard and mouse |
+|---|---|---|
+| Move | Left stick | W A S D |
+| Camera | Right stick | Mouse (or the arrow keys) |
+| Jump | Cross | Space |
+| Grab, hold on | Triangle | Left click or Q |
+| Call Trico | R1 | Right click or 3 |
+| | Square | E or middle click |
+| | Circle | Left Shift |
+| | L1 / L2 / R2 | 1 / R / F |
+| | L3 / R3 | Z / C |
+| | D-pad | I J K L |
+| Menu | Options | Enter |
+| Photo mode / pause | Touchpad (left / right) | Tab / Backspace |
+
+- In the launcher, the **Controls** box turns the mouse on or off, sets its sensitivity and inverts the Y axis. **Keyboard and mouse buttons…** remaps each button: click *Set* and press the key or mouse button (the side buttons and the wheel work too). It applies at the next start.
+- In game, the **Controls** tab of the port's menu (Insert) changes sensitivity, Y axis, smoothing, acceleration and anti-dead zone at once.
 
 ### Where things are
 

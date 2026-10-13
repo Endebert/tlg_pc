@@ -264,11 +264,14 @@ static uint32_t sample_mouse(PadData *d) {
     const uint64_t now=d->timestamp;
     const float dt=mouse_last_us ? (float)(now-mouse_last_us)/1e6f : MOUSE_STICK_WINDOW_S;
     mouse_last_us=now;
+    static bool was_captured;
     if (!in.mouse_enabled || !m.captured) {
         memset(&mouse_stick,0,sizeof(mouse_stick));
         memset(wheel,0,sizeof(wheel));
+        was_captured=false;
         return 0;
     }
+    if (!was_captured) { m.dx=m.dy=0; was_captured=true; } /* motion from before the game read the pad */
     ++mouse_samples;
     const MouseStickParams p={in.sensitivity,in.smoothing,in.accel,in.deadzone,in.invert_y};
     mouse_stick_update(&mouse_stick,&p,m.dx,m.dy,dt);

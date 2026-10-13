@@ -98,6 +98,10 @@ int main(void) {
     mouse_stick_update(&s,&p,1e6f,0,0.0f);
     mouse_stick_update(&s,&p,0,0,10.0f);
     assert(s.out[0]==0.0f || s.out[0]==1.0f);
+    /* A one-second gap keeps the speed: half speed is still half a deflection. */
+    s=(MouseStick){0};
+    mouse_stick_update(&s,&p,MOUSE_STICK_FULL_SPEED*0.5f,0,1.0f);
+    assert(fabsf(mouse_stick_axis(&s,&p,0)-0.5f)<0.01f);
     puts("PASS: mouse stick");
     return 0;
 }

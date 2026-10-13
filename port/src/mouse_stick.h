@@ -37,6 +37,7 @@ static inline float mouse_stick_clamp(float v, float lo, float hi) { return v<lo
 
 /* dx, dy: mouse counts since the last call; dt: seconds since it. */
 static inline void mouse_stick_update(MouseStick *s, const MouseStickParams *p, float dx, float dy, float dt) {
+    if (dt>0.1f) { dx*=0.1f/dt; dy*=0.1f/dt; } /* a long gap (loading): keep the speed */
     dt=mouse_stick_clamp(dt,0.0005f,0.1f);
     s->acc[0]+=dx; s->acc[1]+=p->invert_y ? -dy : dy;
     s->acc_t+=dt;
