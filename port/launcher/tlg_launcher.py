@@ -45,6 +45,18 @@ TEXT = {
     'show_fps': ('Show FPS overlay at start (F10 toggles)', 'Mostrar overlay de FPS ao iniciar (F10 alterna)'),
     'vram': ('Texture cache budget (MB of VRAM)', 'Orçamento do cache de texturas (MB de VRAM)'),
     'vram_hint': ('5600 for 6 GB cards, 7000 for 8 GB', '5600 para placas de 6 GB, 7000 para 8 GB'),
+    'filters': ('Image filters (live in the in-game menu too, Insert → Image)',
+                'Filtros de imagem (também no menu do jogo, Insert → Imagem)'),
+    'smaa': ('SMAA anti-aliasing (smooths edges; the HUD too)', 'Anti-aliasing SMAA (suaviza bordas; o HUD também)'),
+    'sharpening': ('Sharpening', 'Nitidez'),
+    'sharpen_off': ('Off', 'Desligada'),
+    'sharpen_rcas': ('RCAS (FSR 1)', 'RCAS (FSR 1)'),
+    'sharpen_cas': ('CAS (AMD)', 'CAS (AMD)'),
+    'color_adjust': ('Color adjustments', 'Ajustes de cor'),
+    'color_brightness': ('Brightness (0 = unchanged)', 'Brilho (0 = sem alteração)'),
+    'color_contrast': ('Contrast (1 = unchanged)', 'Contraste (1 = sem alteração)'),
+    'color_saturation': ('Saturation (1 = unchanged)', 'Saturação (1 = sem alteração)'),
+    'color_gamma': ('Gamma (1 = unchanged)', 'Gama (1 = sem alteração)'),
     'audio': ('Audio', 'Áudio'),
     'native_audio': ('Native audio (libSceNgs2.sprx from your console)', 'Áudio nativo (libSceNgs2.sprx do seu console)'),
     'controls': ('Controls', 'Controles'),
@@ -127,6 +139,14 @@ def sdl_key_name(keysym):
     if keysym.startswith('KP_') and keysym[3:].isdigit():
         return f'Keypad {keysym[3:]}'
     return None
+
+SHARPENERS = ['off', 'rcas', 'cas']
+# Image filters: kept in tlg.ini only (the in-game menu writes the same keys), with their
+# defaults and ranges (tlg_graphics.h).
+INI_DEFAULTS = {'smaa': '0', 'rcas': '1', 'cas': '0', 'color_adjust': '0', 'color_brightness': '0.00',
+                'color_contrast': '1.00', 'color_saturation': '1.00', 'color_gamma': '1.00'}
+COLOR_RANGES = {'color_brightness': (-0.5, 0.5), 'color_contrast': (0.5, 1.5),
+                'color_saturation': (0.0, 2.0), 'color_gamma': (0.5, 2.0)}
 
 
 def art_path(settings, name):
@@ -261,6 +281,7 @@ class Launcher:
         spin.grid(row=3, column=1, sticky='w', padx=6, pady=(6, 0))
         spin.bind('<FocusOut>', lambda _: self.changed())
         ttk.Label(video, text=self.t('vram_hint'), foreground='#777').grid(row=4, column=0, columnspan=2, sticky='w')
+        self.build_filters(video, 5)
 
         log_frame = ttk.LabelFrame(main, text='Log', padding=4)
         log_frame.grid(row=2, column=2, sticky='nsew', **pad)
@@ -302,6 +323,47 @@ class Launcher:
                                     '-subsample', 4, 4)  # Tk command: same on every Python version
         except tk.TclError:
             self.banner = None
+
+    def build_filters(self, parent, row):
+        """SMAA, sharpening and color adjustments, read from and written to tlg.ini right away."""
+        ttk.Separator(parent).grid(row=row, column=0, columnspan=2, sticky='ew', pady=(8, 4))
+        ttk.Label(parent, text=self.t('filters'), foreground='#555', wraplength=360).grid(
+            row=row + 1, column=0, columnspan=2, sticky='w')
+        ini = dict(INI_DEFAULTS)
+        ini.update({k: v for k, v in tlg_run.read_ini(tlg_run.USER_DIR / 'tlg.ini').items() if k in ini})
+        self.ini_vars = {}
+        for offset, key in ((2, 'smaa'), (4, 'color_adjust')):
+            var = tk.BooleanVar(value=ini[key] not in ('0', ''))
+            self.ini_vars[key] = var
+            ttk.Checkbutton(parent, text=self.t(key), variable=var, command=self.filters_changed).grid(
+                row=row + offset, column=0, columnspan=2, sticky='w', pady=2)
+        ttk.Label(parent, text=self.t('sharpening')).grid(row=row + 3, column=0, sticky='w')
+        self.sharpener = ttk.Combobox(parent, values=[self.t('sharpen_' + k) for k in SHARPENERS],
+                                      state='readonly', width=16)
+        self.sharpener.current(2 if ini['cas'] not in ('0', '') else 1 if ini['rcas'] not in ('0', '') else 0)
+        self.sharpener.grid(row=row + 3, column=1, sticky='w', padx=6, pady=2)
+        self.sharpener.bind('<<ComboboxSelected>>', lambda _: self.filters_changed())
+        for index, key in enumerate(COLOR_RANGES):
+            low, high = COLOR_RANGES[key]
+            ttk.Label(parent, text=self.t(key)).grid(row=row + 5 + index, column=0, sticky='w', padx=(16, 0))
+            var = tk.StringVar(value=ini[key])
+            self.ini_vars[key] = var
+            spin = ttk.Spinbox(parent, from_=low, to=high, increment=0.05, format='%.2f', textvariable=var,
+                               width=6, command=self.filters_changed)
+            spin.grid(row=row + 5 + index, column=1, sticky='w', padx=6, pady=1)
+            spin.bind('<FocusOut>', lambda _: self.filters_changed())
+
+    def filters_changed(self):
+        values = {'smaa': int(self.ini_vars['smaa'].get()), 'color_adjust': int(self.ini_vars['color_adjust'].get()),
+                  'rcas': int(self.sharpener.current() == 1), 'cas': int(self.sharpener.current() == 2)}
+        for key, (low, high) in COLOR_RANGES.items():
+            try:
+                value = min(max(float(self.ini_vars[key].get().replace(',', '.')), low), high)
+            except ValueError:
+                continue  # while typing
+            values[key] = f'{value:.2f}'
+        tlg_run.USER_DIR.mkdir(parents=True, exist_ok=True)
+        tlg_run.update_ini(tlg_run.USER_DIR / 'tlg.ini', values)
 
     def combo(self, parent, row, key, values, label, on_change=None):
         ttk.Label(parent, text=self.t(key)).grid(row=row, column=0, sticky='w')
