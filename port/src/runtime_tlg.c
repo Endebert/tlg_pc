@@ -90,6 +90,17 @@ static ABI int32_t ef_clear(EventFlag *ef,uint64_t mask) {
     pthread_mutex_unlock(&ef->lock);
     return 0;
 }
+/* sceKernelCancelEventFlag: the waiters return ECANCELED, the bits become `pattern`. */
+static ABI int32_t ef_cancel(EventFlag *ef,uint64_t pattern,int32_t *waiters) {
+    if (!ef_valid(ef)) return KERR_ESRCH;
+    pthread_mutex_lock(&ef->lock);
+    if (waiters) *waiters=ef->waiters;
+    ef->bits=pattern;
+    ++ef->cancel_generation;
+    pthread_cond_broadcast(&ef->cond);
+    pthread_mutex_unlock(&ef->lock);
+    return 0;
+}
 static int ef_match(uint64_t bits,uint64_t pattern,uint32_t mode) {
     return (mode & EF_WAIT_AND) ? (bits & pattern)==pattern : (bits & pattern)!=0;
 }
@@ -125,13 +136,15 @@ static ABI int32_t ef_wait(EventFlag *ef,uint64_t pattern,uint32_t mode,uint64_t
         deadline.tv_sec=start.tv_sec+(time_t)(ns/1000000000); deadline.tv_nsec=(long)(ns%1000000000);
     }
     int32_t r=0;
+    const int generation=ef->cancel_generation;
     ++ef->waiters;
-    while (!ef->deleted && !ef_match(ef->bits,pattern,mode)) {
+    while (!ef->deleted && ef->cancel_generation==generation && !ef_match(ef->bits,pattern,mode)) {
         int e=timeout_us ? pthread_cond_timedwait(&ef->cond,&ef->lock,&deadline) : pthread_cond_wait(&ef->cond,&ef->lock);
         if (e==ETIMEDOUT) { r=KERR_ETIMEDOUT; break; }
     }
     --ef->waiters;
     if (ef->deleted) r=KERR_ESRCH;
+    else if (ef->cancel_generation!=generation) { r=KERR_ECANCELED; if (result) *result=ef->bits; }
     else if (!r) ef_consume(ef,pattern,mode,result);
     else if (result) *result=ef->bits;
     pthread_mutex_unlock(&ef->lock);
@@ -311,6 +324,7 @@ static const RuntimeExport exports[]={
     {"sceKernelCreateEventFlag",ef_create}, {"sceKernelDeleteEventFlag",ef_delete},
     {"sceKernelSetEventFlag",ef_set}, {"sceKernelClearEventFlag",ef_clear},
     {"sceKernelPollEventFlag",ef_poll}, {"sceKernelWaitEventFlag",ef_wait},
+    {"sceKernelCancelEventFlag",ef_cancel},
     {"sceKernelIsNeoMode",is_neo_mode}, {"sceKernelAvailableFlexibleMemorySize",available_flexible_memory},
     {"sceKernelGetdents",getdents}, {"sceKernelGetPrtAperture",prt_aperture},
     {"sceKernelGetModuleInfoForUnwind",module_info_for_unwind},

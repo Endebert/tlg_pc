@@ -36,11 +36,50 @@ TEXT = {
     'Borderless': ('Borderless window', 'Janela sem borda'),
     'Fullscreen': ('Fullscreen', 'Tela cheia'),
     'vsync': ('VSync', 'VSync'),
+    'frame_rate': ('Frame rate (experimental)', 'Taxa de quadros (experimental)'),
+    'fps_30': ('30 FPS (as on PS4)', '30 FPS (como no PS4)'),
+    'fps_60': ('60 FPS', '60 FPS'),
+    'fps_unlocked': ('Unlocked (up to the display)', 'Livre (até a taxa do monitor)'),
+    'fps_hint': ('60/unlocked patch eboot 1.03 in memory; see docs/60fps.md',
+                 '60/livre alteram o eboot 1.03 na memória; ver docs/60fps.md'),
     'show_fps': ('Show FPS overlay at start (F10 toggles)', 'Mostrar overlay de FPS ao iniciar (F10 alterna)'),
     'vram': ('Texture cache budget (MB of VRAM)', 'Orçamento do cache de texturas (MB de VRAM)'),
     'vram_hint': ('5600 for 6 GB cards, 7000 for 8 GB', '5600 para placas de 6 GB, 7000 para 8 GB'),
+    'filters': ('Image filters (live in the in-game menu too, Insert → Image)',
+                'Filtros de imagem (também no menu do jogo, Insert → Imagem)'),
+    'smaa': ('SMAA anti-aliasing (smooths edges; the HUD too)', 'Anti-aliasing SMAA (suaviza bordas; o HUD também)'),
+    'sharpening': ('Sharpening', 'Nitidez'),
+    'sharpen_off': ('Off', 'Desligada'),
+    'sharpen_rcas': ('RCAS (FSR 1)', 'RCAS (FSR 1)'),
+    'sharpen_cas': ('CAS (AMD)', 'CAS (AMD)'),
+    'color_adjust': ('Color adjustments', 'Ajustes de cor'),
+    'color_brightness': ('Brightness (0 = unchanged)', 'Brilho (0 = sem alteração)'),
+    'color_contrast': ('Contrast (1 = unchanged)', 'Contraste (1 = sem alteração)'),
+    'color_saturation': ('Saturation (1 = unchanged)', 'Saturação (1 = sem alteração)'),
+    'color_gamma': ('Gamma (1 = unchanged)', 'Gama (1 = sem alteração)'),
     'audio': ('Audio', 'Áudio'),
     'native_audio': ('Native audio (libSceNgs2.sprx from your console)', 'Áudio nativo (libSceNgs2.sprx do seu console)'),
+    'controls': ('Controls', 'Controles'),
+    'mouse_enabled': ('Mouse turns the camera', 'Mouse gira a câmera'),
+    'mouse_invert_y': ('Invert mouse Y axis', 'Inverter eixo Y do mouse'),
+    'mouse_sensitivity': ('Mouse sensitivity', 'Sensibilidade do mouse'),
+    'mouse_hint': ('Esc releases the mouse; a click in the game window takes it back.',
+                   'Esc solta o mouse; um clique na janela do jogo prende de novo.'),
+    'remap': ('Keyboard and mouse buttons…', 'Teclas e botões do mouse…'),
+    'remap_title': ('Keyboard and mouse buttons', 'Teclas e botões do mouse'),
+    'remap_help': ('Click Set and press a key or mouse button, or type SDL names (Space, Left Shift, '
+                   'Mouse Left, Mouse X1, Wheel Up…). "|" gives several: Q|Mouse Left. "none": no key. '
+                   'Empty: the default (grey). Applies at the next start.',
+                   'Clique em Definir e aperte uma tecla ou botão do mouse, ou digite nomes do SDL (Space, Left Shift, '
+                   'Mouse Left, Mouse X1, Wheel Up…). "|" junta vários: Q|Mouse Left. "none": nenhuma tecla. '
+                   'Vazio: o padrão (cinza). Vale na próxima vez que o jogo abrir.'),
+    'button': ('PS4 button', 'Botão do PS4'),
+    'keys': ('Keys / mouse', 'Teclas / mouse'),
+    'default': ('Default', 'Padrão'),
+    'set': ('Set', 'Definir'),
+    'press': ('Press a key…', 'Aperte uma tecla…'),
+    'reset': ('Reset all', 'Restaurar tudo'),
+    'close': ('Close', 'Fechar'),
     'play': ('Play', 'Jogar'),
     'saves': ('Saves folder', 'Pasta de saves'),
     'logs': ('Logs folder', 'Pasta de logs'),
@@ -68,6 +107,46 @@ GAME_LANGUAGE_NAMES = {'en': 'English', 'pt_BR': 'Português (Brasil)', 'es_LA':
 UI_LANGUAGES = ['auto', 'pt_BR', 'en_US']
 UI_LANGUAGE_NAMES = {'pt_BR': 'Português (Brasil)', 'en_US': 'English (US)'}
 DISPLAY_MODES = ['Windowed', 'Borderless', 'Fullscreen']
+# The PS4 buttons the remap dialog lists, with what they do in The Last Guardian when known.
+PS4_BUTTONS = [
+    ('cross', 'Cross (X)', ('jump', 'pular')), ('circle', 'Circle', None), ('square', 'Square', None),
+    ('triangle', 'Triangle', ('grab, hold on', 'agarrar, segurar')), ('l1', 'L1', None),
+    ('r1', 'R1', ('call Trico', 'chamar o Trico')), ('l2', 'L2', None), ('r2', 'R2', None), ('l3', 'L3', None),
+    ('r3', 'R3', None), ('options', 'Options', ('menu', 'menu')),
+    ('touchpad_left', 'Touchpad (left)', ('photo mode', 'modo foto')),
+    ('touchpad_right', 'Touchpad (right)', ('pause', 'pausa')),
+    ('up', 'D-pad up', None), ('down', 'D-pad down', None), ('left', 'D-pad left', None), ('right', 'D-pad right', None),
+]
+# Tk key names -> SDL key names (src/runtime_pad.c reads SDL names); letters and digits are the same.
+TK_TO_SDL = {
+    'space': 'Space', 'Shift_L': 'Left Shift', 'Shift_R': 'Right Shift', 'Control_L': 'Left Ctrl',
+    'Control_R': 'Right Ctrl', 'Alt_L': 'Left Alt', 'Alt_R': 'Right Alt', 'Return': 'Return', 'Tab': 'Tab',
+    'BackSpace': 'Backspace', 'Up': 'Up', 'Down': 'Down', 'Left': 'Left', 'Right': 'Right', 'Delete': 'Delete',
+    'Insert': 'Insert', 'Home': 'Home', 'End': 'End', 'Prior': 'PageUp', 'Next': 'PageDown',
+    'Caps_Lock': 'CapsLock', 'comma': ',', 'period': '.', 'minus': '-', 'equal': '=', 'slash': '/',
+    'semicolon': ';', 'apostrophe': "'", 'bracketleft': '[', 'bracketright': ']', 'backslash': '\\',
+    'grave': '`', 'KP_Enter': 'Keypad Enter',
+}
+TK_MOUSE = {1: 'Mouse Left', 2: 'Mouse Middle', 3: 'Mouse Right', 8: 'Mouse X1', 9: 'Mouse X2'}
+
+
+def sdl_key_name(keysym):
+    """The SDL name of a Tk key, or None (Esc releases the mouse in game; F-keys are the port's)."""
+    if keysym in TK_TO_SDL:
+        return TK_TO_SDL[keysym]
+    if len(keysym) == 1 and keysym.isalnum():
+        return keysym.upper()
+    if keysym.startswith('KP_') and keysym[3:].isdigit():
+        return f'Keypad {keysym[3:]}'
+    return None
+
+SHARPENERS = ['off', 'rcas', 'cas']
+# Image filters: kept in tlg.ini only (the in-game menu writes the same keys), with their
+# defaults and ranges (tlg_graphics.h).
+INI_DEFAULTS = {'smaa': '0', 'rcas': '1', 'cas': '0', 'color_adjust': '0', 'color_brightness': '0.00',
+                'color_contrast': '1.00', 'color_saturation': '1.00', 'color_gamma': '1.00'}
+COLOR_RANGES = {'color_brightness': (-0.5, 0.5), 'color_contrast': (0.5, 1.5),
+                'color_saturation': (0.0, 2.0), 'color_gamma': (0.5, 2.0)}
 
 
 def art_path(settings, name):
@@ -114,7 +193,7 @@ class Launcher:
             child.destroy()
         root = self.root
         root.title(self.t('title'))
-        root.minsize(1120, 640)
+        root.minsize(1120, 680)
         pad = {'padx': 6, 'pady': 4}
         main = ttk.Frame(root, padding=12)
         main.pack(fill='both', expand=True)
@@ -158,8 +237,23 @@ class Launcher:
             ttk.Button(game, text=self.t('browse'), command=lambda k=key: self.browse(k)).grid(
                 row=row * 2 + 1, column=1, padx=(6, 0), pady=(0, 6))
         audio = ttk.LabelFrame(left, text=self.t('audio'), padding=8)
-        audio.grid(sticky='ew')
+        audio.grid(sticky='ew', pady=(0, 8))
         self.check(audio, 0, 'native_audio')
+        controls = ttk.LabelFrame(left, text=self.t('controls'), padding=8)
+        controls.grid(sticky='ew')
+        controls.columnconfigure(1, weight=1)
+        self.check(controls, 0, 'mouse_enabled')
+        self.check(controls, 1, 'mouse_invert_y')
+        ttk.Label(controls, text=self.t('mouse_sensitivity')).grid(row=2, column=0, sticky='w', pady=(4, 0))
+        sens = tk.DoubleVar(value=float(self.settings.get('mouse_sensitivity', 1.0)))
+        self.vars['mouse_sensitivity'] = sens
+        sens_spin = ttk.Spinbox(controls, from_=0.1, to=5.0, increment=0.1, format='%.2f', textvariable=sens,
+                                width=6, command=self.changed)
+        sens_spin.grid(row=2, column=1, sticky='w', padx=6, pady=(4, 0))
+        sens_spin.bind('<FocusOut>', lambda _: self.changed())
+        ttk.Button(controls, text=self.t('remap'), command=self.remap_dialog).grid(row=2, column=2, sticky='e', pady=(4, 0))
+        ttk.Label(controls, text=self.t('mouse_hint'), foreground='#777', wraplength=420, justify='left').grid(
+            row=3, column=0, columnspan=3, sticky='w', pady=(2, 0))
 
         middle = ttk.Frame(main)
         middle.grid(row=2, column=1, sticky='nsew', **pad)
@@ -176,6 +270,9 @@ class Launcher:
         self.combo(video, 0, 'display_mode', DISPLAY_MODES, lambda k: self.t(k))
         self.check(video, 1, 'vsync')
         self.check(video, 2, 'show_fps')
+        self.combo(video, 5, 'frame_rate', tlg_run.FRAME_RATES, lambda k: self.t(f'fps_{k}'))
+        ttk.Label(video, text=self.t('fps_hint'), foreground='#777', wraplength=320).grid(
+            row=6, column=0, columnspan=2, sticky='w')
         ttk.Label(video, text=self.t('vram'), wraplength=220).grid(row=3, column=0, sticky='w', pady=(6, 0))
         vram = tk.IntVar(value=int(self.settings['vram_budget_mb']))
         self.vars['vram_budget_mb'] = vram
@@ -184,6 +281,7 @@ class Launcher:
         spin.grid(row=3, column=1, sticky='w', padx=6, pady=(6, 0))
         spin.bind('<FocusOut>', lambda _: self.changed())
         ttk.Label(video, text=self.t('vram_hint'), foreground='#777').grid(row=4, column=0, columnspan=2, sticky='w')
+        self.build_filters(video, 5)
 
         log_frame = ttk.LabelFrame(main, text='Log', padding=4)
         log_frame.grid(row=2, column=2, sticky='nsew', **pad)
@@ -226,6 +324,47 @@ class Launcher:
         except tk.TclError:
             self.banner = None
 
+    def build_filters(self, parent, row):
+        """SMAA, sharpening and color adjustments, read from and written to tlg.ini right away."""
+        ttk.Separator(parent).grid(row=row, column=0, columnspan=2, sticky='ew', pady=(8, 4))
+        ttk.Label(parent, text=self.t('filters'), foreground='#555', wraplength=360).grid(
+            row=row + 1, column=0, columnspan=2, sticky='w')
+        ini = dict(INI_DEFAULTS)
+        ini.update({k: v for k, v in tlg_run.read_ini(tlg_run.USER_DIR / 'tlg.ini').items() if k in ini})
+        self.ini_vars = {}
+        for offset, key in ((2, 'smaa'), (4, 'color_adjust')):
+            var = tk.BooleanVar(value=ini[key] not in ('0', ''))
+            self.ini_vars[key] = var
+            ttk.Checkbutton(parent, text=self.t(key), variable=var, command=self.filters_changed).grid(
+                row=row + offset, column=0, columnspan=2, sticky='w', pady=2)
+        ttk.Label(parent, text=self.t('sharpening')).grid(row=row + 3, column=0, sticky='w')
+        self.sharpener = ttk.Combobox(parent, values=[self.t('sharpen_' + k) for k in SHARPENERS],
+                                      state='readonly', width=16)
+        self.sharpener.current(2 if ini['cas'] not in ('0', '') else 1 if ini['rcas'] not in ('0', '') else 0)
+        self.sharpener.grid(row=row + 3, column=1, sticky='w', padx=6, pady=2)
+        self.sharpener.bind('<<ComboboxSelected>>', lambda _: self.filters_changed())
+        for index, key in enumerate(COLOR_RANGES):
+            low, high = COLOR_RANGES[key]
+            ttk.Label(parent, text=self.t(key)).grid(row=row + 5 + index, column=0, sticky='w', padx=(16, 0))
+            var = tk.StringVar(value=ini[key])
+            self.ini_vars[key] = var
+            spin = ttk.Spinbox(parent, from_=low, to=high, increment=0.05, format='%.2f', textvariable=var,
+                               width=6, command=self.filters_changed)
+            spin.grid(row=row + 5 + index, column=1, sticky='w', padx=6, pady=1)
+            spin.bind('<FocusOut>', lambda _: self.filters_changed())
+
+    def filters_changed(self):
+        values = {'smaa': int(self.ini_vars['smaa'].get()), 'color_adjust': int(self.ini_vars['color_adjust'].get()),
+                  'rcas': int(self.sharpener.current() == 1), 'cas': int(self.sharpener.current() == 2)}
+        for key, (low, high) in COLOR_RANGES.items():
+            try:
+                value = min(max(float(self.ini_vars[key].get().replace(',', '.')), low), high)
+            except ValueError:
+                continue  # while typing
+            values[key] = f'{value:.2f}'
+        tlg_run.USER_DIR.mkdir(parents=True, exist_ok=True)
+        tlg_run.update_ini(tlg_run.USER_DIR / 'tlg.ini', values)
+
     def combo(self, parent, row, key, values, label, on_change=None):
         ttk.Label(parent, text=self.t(key)).grid(row=row, column=0, sticky='w')
         names = [label(v) for v in values]
@@ -243,6 +382,85 @@ class Launcher:
                 self.refresh_status()
         box.bind('<<ComboboxSelected>>', picked)
         return box
+
+    def remap_dialog(self):
+        """PS4 button -> keys and mouse buttons (tlg.ini key_map through tlg_run.launch)."""
+        if getattr(self, 'remap_window', None) and self.remap_window.winfo_exists():
+            self.remap_window.lift()
+            return
+        win = self.remap_window = tk.Toplevel(self.root)
+        win.title(self.t('remap_title'))
+        win.transient(self.root)
+        frame = ttk.Frame(win, padding=12)
+        frame.pack(fill='both', expand=True)
+        mapping = dict(self.settings.get('key_map') or {})
+        entries = {}
+        half = (len(PS4_BUTTONS) + 1) // 2
+        for column in (0, 4):
+            ttk.Label(frame, text=self.t('button'), font=('TkDefaultFont', 9, 'bold')).grid(row=0, column=column, sticky='w')
+            ttk.Label(frame, text=self.t('keys'), font=('TkDefaultFont', 9, 'bold')).grid(row=0, column=column + 1, sticky='w')
+            ttk.Label(frame, text=self.t('default'), font=('TkDefaultFont', 9, 'bold')).grid(row=0, column=column + 3, sticky='w')
+
+        def save(*_):
+            self.settings['key_map'] = {b: e.get().strip() for b, e in entries.items() if e.get().strip()}
+            tlg_run.save_settings(self.settings)
+
+        def capture(button, entry, set_button):
+            set_button.configure(text=self.t('press'))
+            win.focus_set()
+
+            def done(name):
+                for sequence in ('<KeyPress>', '<ButtonPress>'):
+                    win.unbind(sequence)
+                set_button.configure(text=self.t('set'))
+                if name:
+                    entry.delete(0, 'end')
+                    entry.insert(0, name)
+                    save()
+
+            def key(event):
+                if event.keysym == 'Escape':
+                    done(None)
+                else:
+                    done(sdl_key_name(event.keysym))
+                return 'break'
+
+            def mouse(event):
+                done(TK_MOUSE.get(event.num))
+                return 'break'
+            win.after(150, lambda: (win.bind('<KeyPress>', key), win.bind('<ButtonPress>', mouse)))
+
+        for index, (button, name, action) in enumerate(PS4_BUTTONS):
+            row, column = index % half + 1, 0 if index < half else 4
+            label = name if not action else f'{name} — {action[1] if self.pt() else action[0]}'
+            ttk.Label(frame, text=label).grid(row=row, column=column, sticky='w', padx=(0, 6), pady=1)
+            entry = ttk.Entry(frame, width=20)
+            entry.insert(0, mapping.get(button, ''))
+            entry.grid(row=row, column=column + 1, sticky='ew', pady=1)
+            entry.bind('<FocusOut>', save)
+            entry.bind('<Return>', save)
+            entries[button] = entry
+            set_button = ttk.Button(frame, text=self.t('set'), width=10)
+            set_button.configure(command=lambda b=button, e=entry, s=set_button: capture(b, e, s))
+            set_button.grid(row=row, column=column + 2, padx=4, pady=1)
+            ttk.Label(frame, text=tlg_run.DEFAULT_KEYS[button], foreground='#888').grid(
+                row=row, column=column + 3, sticky='w', padx=(0, 18))
+        ttk.Label(frame, text=self.t('remap_help'), foreground='#555', wraplength=760, justify='left').grid(
+            row=half + 1, column=0, columnspan=8, sticky='w', pady=(10, 6))
+        bottom = ttk.Frame(frame)
+        bottom.grid(row=half + 2, column=0, columnspan=8, sticky='ew')
+
+        def reset():
+            for entry in entries.values():
+                entry.delete(0, 'end')
+            save()
+
+        def close():
+            save()
+            win.destroy()
+        ttk.Button(bottom, text=self.t('reset'), command=reset).pack(side='left')
+        ttk.Button(bottom, text=self.t('close'), command=close).pack(side='right')
+        win.protocol('WM_DELETE_WINDOW', close)
 
     def check(self, parent, row, key):
         var = tk.BooleanVar(value=bool(self.settings[key]))
@@ -309,6 +527,7 @@ class Launcher:
             return
         self.lines.put(f"{self.t('running')} {log}")
         with open(log, 'w', encoding='utf-8') as out:
+            out.write(f'Frame rate: requested {tlg_run.frame_rate(self.settings)}, applied {tlg_run.applied_frame_rate}\n')
             for line in self.process.stdout:
                 out.write(line)
                 out.flush()

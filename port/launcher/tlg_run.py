@@ -53,7 +53,52 @@ DEFAULT_SETTINGS = {
     'vsync': True,
     'vram_budget_mb': 5600,
     'native_audio': True,
+    # Mouse and keyboard (tlg.ini; the in-game menu's Controls tab changes the mouse ones too).
+    'mouse_enabled': True,
+    'mouse_sensitivity': 1.0,
+    'mouse_invert_y': False,
+    'key_map': {},                 # PS4 button -> 'Key|Mouse Left' (empty: the default)
+    'frame_rate': '30',            # 30 | 60 | unlocked (scripts/tlg_patches.py; TLG_FPS wins)
 }
+FRAME_RATES = ['30', '60', 'unlocked']
+# The frame rate mode prepare() really applied (another eboot build stays at 30).
+applied_frame_rate = '30'
+
+# Keyboard and mouse defaults of src/runtime_pad.c, in its key_map syntax ('|': several).
+DEFAULT_KEYS = {
+    'cross': 'Space', 'circle': 'Left Shift', 'square': 'E|Mouse Middle', 'triangle': 'Q|Mouse Left',
+    'l1': '1', 'r1': '3|Mouse Right', 'l2': 'R', 'r2': 'F', 'l3': 'Z', 'r3': 'C', 'options': 'Return',
+    'touchpad_left': 'Tab', 'touchpad_right': 'Backspace', 'up': 'I', 'down': 'K', 'left': 'J', 'right': 'L',
+}
+# Synced with tlg.ini both ways: the in-game menu saves them there.
+INI_KEYS = ('mouse_enabled', 'mouse_sensitivity', 'mouse_invert_y', 'key_map')
+
+
+def key_map_spec(mapping):
+    """The tlg.ini key_map value: only the buttons that differ from the defaults."""
+    return ','.join(f'{button}={value.strip()}' for button, value in mapping.items()
+                    if button in DEFAULT_KEYS and value.strip() and value.strip() != DEFAULT_KEYS[button])
+
+
+def parse_key_map(spec):
+    mapping = {}
+    for entry in (spec or '').split(','):
+        button, eq, value = entry.partition('=')
+        if eq and button.strip().lower() in DEFAULT_KEYS:
+            mapping[button.strip().lower()] = value.strip()
+    return mapping
+
+
+def read_ini(path):
+    values = {}
+    try:
+        for line in Path(path).read_text(encoding='utf-8').splitlines():
+            key, eq, value = line.partition('=')
+            if eq and not key.startswith('#'):
+                values[key.strip()] = value.strip()
+    except OSError:
+        pass
+    return values
 
 
 def config_path():
@@ -67,6 +112,19 @@ def load_settings():
         settings.update(json.loads(config_path().read_text(encoding='utf-8')))
     except (OSError, ValueError):
         pass
+    # The in-game menu may have changed the mouse since: tlg.ini wins for those keys.
+    ini = read_ini(USER_DIR / 'tlg.ini')
+    try:
+        if 'mouse_enabled' in ini:
+            settings['mouse_enabled'] = ini['mouse_enabled'] != '0'
+        if 'mouse_invert_y' in ini:
+            settings['mouse_invert_y'] = ini['mouse_invert_y'] != '0'
+        if 'mouse_sensitivity' in ini:
+            settings['mouse_sensitivity'] = min(5.0, max(0.1, float(ini['mouse_sensitivity'])))
+    except ValueError:
+        pass
+    if 'key_map' in ini:
+        settings['key_map'] = parse_key_map(ini['key_map'])
     return settings
 
 
@@ -96,6 +154,19 @@ def check_game(game_dir):
 def ngs2_module(settings):
     path = Path(settings['system_lib_dir']) / 'libSceNgs2.sprx'
     return path if settings.get('native_audio', True) and path.is_file() else None
+
+
+def read_ini(path):
+    """The key=value pairs of tlg.ini (empty when the file does not exist yet)."""
+    values = {}
+    try:
+        for line in path.read_text(encoding='utf-8').splitlines():
+            if '=' in line and not line.lstrip().startswith('#'):
+                key, value = line.split('=', 1)
+                values[key.strip()] = value.strip()
+    except OSError:
+        pass
+    return values
 
 
 def update_ini(path, values):
@@ -155,8 +226,15 @@ def run_script(argv):
     return 0
 
 
+def frame_rate(settings):
+    """The requested frame rate mode: TLG_FPS, else the launcher's setting."""
+    return os.environ.get('TLG_FPS') or str(settings.get('frame_rate', '30'))
+
+
 def prepare(settings, log=print):
-    """Builds out/boot-linked.bin and out/content.bin; returns the module list that was linked."""
+    """Builds out/boot-linked.bin, out/content.bin and out/patches.bin (frame rate patches);
+    returns the module list that was linked."""
+    global applied_frame_rate
     game = settings['game_dir']
     scripts = PORT_DIR / 'scripts'
     modules = ['libc.prx', 'libSceFios2.prx']
@@ -167,6 +245,7 @@ def prepare(settings, log=print):
         [*python_command(scripts / 'prepare.py'), game, '--out', str(OUT_DIR)],
         [*python_command(scripts / 'link_modules.py'), game, '--out', str(OUT_DIR), '--modules', *modules],
         [*python_command(scripts / 'content_profile.py'), game, '--out', str(OUT_DIR)],
+        [*python_command(scripts / 'tlg_patches.py'), game, '--out', str(OUT_DIR), '--mode', frame_rate(settings)],
     ]
     for step in steps:
         result = subprocess.run(step, cwd=str(scripts), capture_output=True, text=True,
@@ -176,7 +255,23 @@ def prepare(settings, log=print):
             raise RuntimeError(f'{name}: {result.stderr.strip() or result.stdout.strip()}')
         for line in result.stdout.splitlines():
             log(line)
+            if line.startswith('Frame rate: ') and line.endswith(' patch writes'):
+                applied_frame_rate = line.split()[2]
     return modules
+
+
+def window_icon():
+    """The port's icon (launcher/tlg.png) as BMP, SDL's built-in format, in out/; None if absent."""
+    source = PORT_DIR / 'launcher' / 'tlg.png'
+    target = OUT_DIR / 'window_icon.bmp'
+    try:
+        if source.is_file() and (not target.is_file() or target.stat().st_mtime < source.stat().st_mtime):
+            from PIL import Image  # optional: without Pillow the window keeps the default icon
+            OUT_DIR.mkdir(parents=True, exist_ok=True)
+            Image.open(source).convert('RGB').resize((128, 128)).save(target)
+        return target if target.is_file() else None
+    except Exception:
+        return None
 
 
 def build_env(settings, extra=None):
@@ -189,6 +284,17 @@ def build_env(settings, extra=None):
         env['TLG_UI_LANG'] = settings['ui_language']
     env['TLG_NGS2'] = 'native' if ngs2_module(settings) else 'hle'
     env['TLG_CONFIG'] = str(USER_DIR / 'tlg.ini')
+    # Window name and app id (matches tlg-pc.desktop for Alt+Tab and the dock) and icon.
+    env.setdefault('TLG_APP_NAME', 'The Last Guardian')
+    env.setdefault('TLG_APP_ID', 'tlg-pc')
+    icon = window_icon()
+    if icon:
+        env.setdefault('TLG_WINDOW_ICON', str(icon))
+    # The present limiter never lets more frames through than the patched engine rate; unlocked
+    # flips as soon as a frame is ready (480 Hz vblank) up to the display refresh or the menu limit.
+    env['TLG_ENGINE_FPS'] = {'30': '30', '60': '60'}.get(applied_frame_rate, '240')
+    if applied_frame_rate == 'unlocked':
+        env.setdefault('TLG_VBLANK_HZ', '0')
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
     env.setdefault('TLG_RESTART_COMMAND', restart)
     # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib.
@@ -223,11 +329,15 @@ def launch(settings, seconds=0, extra_env=None):
         'display_mode': settings['display_mode'],
         'vsync': int(bool(settings['vsync'])),
         'show_fps': int(bool(settings['show_fps'])),
+        'mouse_enabled': int(bool(settings.get('mouse_enabled', True))),
+        'mouse_sensitivity': f"{float(settings.get('mouse_sensitivity', 1.0)):.2f}",
+        'mouse_invert_y': int(bool(settings.get('mouse_invert_y', False))),
+        'key_map': key_map_spec(settings.get('key_map') or {}),
     })
     log = new_log()
     cmd = [str(PROBE), str(OUT_DIR / 'boot-linked.bin'), '--app0', settings['game_dir'],
            '--user', str(USER_DIR), '--content-profile', str(OUT_DIR / 'content.bin'),
-           '--timeout', str(int(seconds))]
+           '--patches', str(OUT_DIR / 'patches.bin'), '--timeout', str(int(seconds))]
     process = subprocess.Popen(cmd, cwd=str(USER_DIR), env=build_env(settings, extra_env),
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                encoding='utf-8', errors='replace', bufsize=1)
@@ -248,10 +358,14 @@ def main(argv=None):
         for kind, detail in problems:
             print(f'{"Compile primeiro" if kind == "not_built" else "Faltando"}: {detail}', file=sys.stderr)
         return 1
-    prepare(settings, log=lambda line: None)
+    notes = []
+    prepare(settings, log=lambda line: notes.append(line) if line.startswith('Frame rate') else None)
     process, log = launch(settings, seconds)
     print(f'Rodando (log: {log})', flush=True)
     with open(log, 'w', encoding='utf-8') as out:
+        for line in notes:
+            print(line, flush=True)
+            out.write(line + '\n')
         for line in process.stdout:
             sys.stdout.write(line)
             out.write(line)
