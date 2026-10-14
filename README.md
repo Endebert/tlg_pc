@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="#english"><b>English below</b></a> ·
-  <a href="https://github.com/HayatoG/tlg_pc/releases/tag/nightly">Download</a> ·
+  <a href="https://github.com/HayatoG/tlg_pc/releases/latest">Download</a> ·
   <a href="https://www.youtube.com/@hayatog-dev">YouTube</a> ·
   <a href="https://discord.gg/UMkdMYZh9g">Discord</a>
 </p>
@@ -56,7 +56,7 @@ Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) 
 
 ## Download
 
-O [**build nightly**](https://github.com/HayatoG/tlg_pc/releases/tag/nightly) é gerado pelo GitHub Actions a cada mudança e substitui o anterior:
+A [**última versão**](https://github.com/HayatoG/tlg_pc/releases/latest) é gerada pelo GitHub Actions a cada mudança; as anteriores ficam em [Releases](https://github.com/HayatoG/tlg_pc/releases) como histórico:
 
 - **Linux x86-64** (glibc 2.39+: Ubuntu 24.04, Fedora 40, SteamOS 3.6 ou mais novos): `tlg-linux-x86_64.tar.gz`
 - **Windows 10/11 64 bits**: `tlg-windows-x86_64.zip`
@@ -167,7 +167,7 @@ The screenshots and the performance chart are at the top of this page.
 
 ## Download
 
-The [**nightly build**](https://github.com/HayatoG/tlg_pc/releases/tag/nightly) is produced by GitHub Actions on every change and replaces the previous one:
+The [**latest release**](https://github.com/HayatoG/tlg_pc/releases/latest) is built by GitHub Actions on every change; older ones stay under [Releases](https://github.com/HayatoG/tlg_pc/releases) as history:
 
 - **Linux x86-64** (glibc 2.39+: Ubuntu 24.04, Fedora 40, SteamOS 3.6 or newer): `tlg-linux-x86_64.tar.gz`
 - **Windows 10/11 64-bit**: `tlg-windows-x86_64.zip`
