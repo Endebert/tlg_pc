@@ -6,7 +6,7 @@ Shared by the command line (run_tlg.sh -> `tlg_run.py [seconds]`) and the launch
 (tlg_launcher.py), so both start the game the same way:
   1. prepare.py / link_modules.py / content_profile.py build out/boot-linked.bin from the game
      folder (eboot 1.03 + the game's libc/Fios2, and libSceNgs2.sprx from the console firmware
-     when present: native audio);
+     when present: native audio; otherwise the built-in mixer, runtime_ngs2.c);
   2. the TLG defaults below become TLG_* environment variables (each one validated in play);
   3. tlg-probe runs with its output in out/logs/run-<date>.log (last_run.log points to it).
 """
@@ -282,6 +282,7 @@ def build_env(settings, extra=None):
     env['TLG_LANGUAGE'] = os.environ.get('TLG_LANGUAGE', str(GAME_LANGUAGES.get(settings['game_language'], 1)))
     if settings.get('ui_language', 'auto') != 'auto':
         env['TLG_UI_LANG'] = settings['ui_language']
+    # Without the console module the port's own mixer (runtime_ngs2.c) plays the audio.
     env['TLG_NGS2'] = 'native' if ngs2_module(settings) else 'hle'
     env['TLG_CONFIG'] = str(USER_DIR / 'tlg.ini')
     # Window name and app id (matches tlg-pc.desktop for Alt+Tab and the dock) and icon.

@@ -319,6 +319,10 @@ Uso: `TLG_<OPÇÃO>=valor ./run_tlg.sh`. Os padrões abaixo já estão em `port/
 | `TLG_PAD_FILE` | — | entrada roteirizada do controle (testes automáticos) |
 | `TLG_TOGGLE_FILE` | — | máscara de otimizações desligadas, lida em tempo real |
 | `TLG_GAME_DIR` | `game/CUSA03627` | pasta do jogo (visão unificada base + 1.03) |
+| `TLG_NGS2` | `native` com o `.sprx`, senão `hle` | áudio: `native` = `libSceNgs2.sprx` do console; `hle` = mixer próprio (`runtime_ngs2.c`, experimental, ver [NGS2_LEVANTAMENTO.md](NGS2_LEVANTAMENTO.md)) |
+| `TLG_NGS2_LOG` | `0` | mixer próprio: parâmetros não tratados, erros de decodificação e um resumo a cada 30 s |
+| `TLG_NGS2_WAV` | — | mixer próprio: grava a mixagem final (float, 8 canais) para comparar com o nativo (`TLG_NGS2_TRACE_WAV`) via `port/tools/ngs2_compare.py` |
+| `TLG_NGS2_USERFX` / `TLG_NGS2_REVERB` / `TLG_NGS2_CUSTOM` | `1` / dry / pass | mixer próprio: `0` não chama os efeitos do jogo (USER_FX); `pass` faz o reverb deixar passar a entrada; `mute` cala os racks custom (chorus/delay) |
 
 Todas as opções do código usam o prefixo `TLG_` (o código herdado do gow3_pc foi renomeado).
 
