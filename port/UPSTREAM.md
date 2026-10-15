@@ -9,3 +9,8 @@ Licença: **GNU GPL v2 ou posterior** (`LICENSE`). Componentes de terceiros mant
 
 As mudanças para The Last Guardian (CUSA03627 v1.03) são feitas aqui e registradas no histórico do git.
 Para trazer correções do upstream, compare com o commit acima.
+
+**Reescrita ISA** (upstream gow3_pc PR #129, via iss_pc `f79c7a3`, `4e4daad`, `c2c14a0` e o SSE4A de
+iss_pc `3727fde`): `src/cpu_check.c`, `src/isa_emulate.c`, `src/isa_rewrite.c`, `scripts/isa_rewrite.py`
+e os testes, para CPUs sem MOVBE/BMI1/LZCNT/SSE4A (todo Intel), trazidos do gr2_pc `5c5d84d`; a mesma
+tabela leva a proteção da red zone no Windows (iss_pc #45, `scripts/red_zone.py`).
