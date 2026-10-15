@@ -6,7 +6,9 @@ Shared by the command line (run_tlg.sh -> `tlg_run.py [seconds]`) and the launch
 (tlg_launcher.py), so both start the game the same way:
   1. prepare.py / link_modules.py / content_profile.py build out/boot-linked.bin from the game
      folder (eboot 1.03 + the game's libc/Fios2, and libSceNgs2.sprx from the console firmware
-     when present: native audio; otherwise the built-in mixer, runtime_ngs2.c);
+     when present: native audio; otherwise the built-in mixer, runtime_ngs2.c); on a CPU without
+     the PS4's MOVBE/BMI1/LZCNT/SSE4A, and on Windows for the red-zone protection, isa_rewrite.py
+     writes out/isa-rewrite.bin, the instruction sites tlg-probe rewrites;
   2. the TLG defaults below become TLG_* environment variables (each one validated in play);
   3. tlg-probe runs with its output in out/logs/run-<date>.log (last_run.log points to it).
 """
@@ -286,7 +288,72 @@ def prepare(settings, log=print):
             log(line)
             if line.startswith('Frame rate: ') and line.endswith(' patch writes'):
                 applied_frame_rate = line.split()[2]
+    isa_table(log)
     return modules
+
+
+ISA_TABLE = OUT_DIR / 'isa-rewrite.bin'
+
+
+def cpu_missing_sets(log=print):
+    """Instruction sets `tlg-probe --cpu-features` reports missing ([] when complete); None when the
+    probe could not tell (it did not start: the table is then built anyway, see isa_table). A CPU
+    that lacks a set nothing can rewrite (AVX and older) stops here (exit 20) with the probe's reason.
+    The probe gets the same library path as the game (out/lib in the Linux package)."""
+    env = os.environ.copy()
+    bundled = OUT_DIR / 'lib'
+    if os.name != 'nt' and bundled.is_dir():
+        env['LD_LIBRARY_PATH'] = os.pathsep.join(filter(None, [str(bundled), os.environ.get('LD_LIBRARY_PATH')]))
+    try:
+        result = subprocess.run([str(PROBE), '--cpu-features'], stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, timeout=30, creationflags=NO_WINDOW, env=env)
+    except (OSError, subprocess.SubprocessError):
+        return []  # no probe yet: check_game reports it
+    if result.returncode == 20:
+        raise RuntimeError(result.stdout.strip() or 'this CPU cannot run the game')
+    for line in result.stdout.splitlines():
+        if line.startswith('CPU: missing '):
+            return [name.strip() for name in line[len('CPU: missing '):].split(',') if name.strip()]
+        if line.startswith('CPU: complete'):
+            return []
+    detail = (result.stderr or result.stdout).strip().splitlines()
+    log(f'CPU check failed (exit {result.returncode}): {detail[-1] if detail else "no output"}; '
+        'building the instruction rewrite table anyway')
+    return None
+
+
+def red_zone_wanted(env=None):
+    """Windows red-zone protection (scripts/red_zone.py, from iss_pc #29/#41): on by default on
+    Windows, TLG_RED_ZONE_REWRITE=0 turns it off; on Linux only TLG_RED_ZONE_REWRITE=1 (tests)
+    turns it on."""
+    env = os.environ if env is None else env
+    policy = env.get('TLG_RED_ZONE_REWRITE') or ''
+    return policy != '0' if os.name == 'nt' else policy == '1'
+
+
+def isa_table(log=print):
+    """ps4_core ISA rewrite (upstream gow3_pc #129): on a CPU without MOVBE, BMI1, LZCNT or SSE4A
+    the probe replaces those instructions in the image, from the table scripts/isa_rewrite.py
+    writes (iced-x86). TLG_ISA_REWRITE=1 (every set) or a list such as TLG_ISA_REWRITE=sse4a builds
+    it on any CPU (testing), =0 never. The same table carries the red-zone protection
+    (red_zone_wanted), so on Windows it is always built; the script keeps a table that already
+    matches the image. A failed table is reported and the probe then explains what is missing."""
+    policy = os.environ.get('TLG_ISA_REWRITE') or ''
+    red_zone = red_zone_wanted()
+    if not red_zone:
+        ISA_TABLE.unlink(missing_ok=True)  # always matches the boot-linked.bin just written
+    missing = cpu_missing_sets(log)
+    # None (unknown) builds it too: the probe only rewrites the sets this CPU really lacks.
+    if not ((policy and policy != '0') or (policy != '0' and (missing is None or missing)) or red_zone):
+        return
+    scripts = PORT_DIR / 'scripts'
+    result = subprocess.run([*python_command(scripts / 'isa_rewrite.py'), str(OUT_DIR / 'boot-linked.bin'),
+                             '--out', str(OUT_DIR), *(['--red-zone'] if red_zone else [])], cwd=str(scripts),
+                            capture_output=True, text=True, creationflags=NO_WINDOW)
+    if result.returncode:
+        ISA_TABLE.unlink(missing_ok=True)
+    for line in (result.stdout + result.stderr).splitlines():
+        log(line)
 
 
 def window_icon():
@@ -371,6 +438,8 @@ def launch(settings, seconds=0, extra_env=None):
     cmd = [str(PROBE), str(OUT_DIR / 'boot-linked.bin'), '--app0', settings['game_dir'],
            '--user', str(USER_DIR), '--content-profile', str(OUT_DIR / 'content.bin'),
            '--patches', str(OUT_DIR / 'patches.bin'), '--timeout', str(int(seconds))]
+    if ISA_TABLE.is_file():
+        cmd += ['--isa-rewrite', str(ISA_TABLE)]
     process = subprocess.Popen(cmd, cwd=str(USER_DIR), env=build_env(settings, extra_env),
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                encoding='utf-8', errors='replace', bufsize=1)
