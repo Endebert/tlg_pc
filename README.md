@@ -30,6 +30,7 @@ Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) 
 - **Filtros de imagem:** anti-aliasing SMAA, nitidez RCAS (FSR 1) ou CAS (AMD) e ajustes de cor (brilho, contraste, saturação, gama), no launcher e ao vivo no menu do jogo (Insert → Imagem) ([#2](https://github.com/HayatoG/tlg_pc/issues/2)).
 - **Mouse e teclado:** o mouse gira a câmera (sensibilidade e eixo Y invertido no launcher) e as teclas e botões do mouse podem ser remapeados ([#8](https://github.com/HayatoG/tlg_pc/issues/8)).
 - **Sensor de movimento:** o giroscópio do DualShock 4/DualSense funciona direto. Em controles sem sensor, um toque em Share (ou L3+R3) liga o "modo sensor": o analógico esquerdo inclina o controle e X/A sacode. No teclado, T/G inclinam e Y sacode.
+- **Brilho e luzes como no PS4:** a exposição automática do jogo agora lê o valor certo da GPU, e as cenas ao ar livre não estouram mais em branco (`TLG_READBACK_LINEAR=1`, ligado por padrão; `0` volta ao comportamento antigo) ([#38](https://github.com/HayatoG/tlg_pc/issues/38), [#40](https://github.com/HayatoG/tlg_pc/issues/40)).
 - **Analógicos:** zona morta de 10% contra drift (`TLG_STICK_DEADZONE`), e o último controle usado é o que vale.
 - **Touchpad sem touchpad:** segure View/Select (ou Tab) e mova o analógico direito (ou as setas) para deslizar o dedo; um toque rápido continua sendo clique.
 - **Desempenho:** o FPS não cai mais com o tempo (as variantes de shader agora se repetem), e transições parciais de imagem repetidas são puladas.
@@ -151,6 +152,7 @@ The screenshots and the performance chart are at the top of this page.
 - **Image filters:** SMAA anti-aliasing, RCAS (FSR 1) or CAS (AMD) sharpening and colour adjustments (brightness, contrast, saturation, gamma), in the launcher and live in the in-game menu (Insert → Image) ([#2](https://github.com/HayatoG/tlg_pc/issues/2)).
 - **Mouse and keyboard:** the mouse turns the camera (sensitivity and inverted Y in the launcher), and keys and mouse buttons can be remapped ([#8](https://github.com/HayatoG/tlg_pc/issues/8)).
 - **Motion sensor:** the DualShock 4/DualSense gyro works as is. On controllers without one, a tap on Share (or L3+R3) toggles "sensor mode": the left stick tilts the controller and cross/A shakes it. On the keyboard, T/G tilt and Y shakes.
+- **PS4-like brightness and lighting:** the game's auto exposure now reads the right value from the GPU, so outdoor scenes no longer blow out to white (`TLG_READBACK_LINEAR=1`, on by default; `0` restores the old behaviour) ([#38](https://github.com/HayatoG/tlg_pc/issues/38), [#40](https://github.com/HayatoG/tlg_pc/issues/40)).
 - **Sticks:** a 10% dead zone against drift (`TLG_STICK_DEADZONE`), and the last controller used is the one that counts.
 - **Touchpad without a touchpad:** hold View/Select (or Tab) and move the right stick (or the arrow keys) to swipe; a quick tap still clicks.
 - **Performance:** FPS no longer drops over time (shader variants are now reused), and repeated partial image transitions are skipped.

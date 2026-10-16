@@ -74,6 +74,12 @@ O crash acontece no fim da intro, ou ao pulá-la. Dados coletados:
 
 Também foram corrigidos no caminho: o formato de dados reservado (`data_fmt 15`) e o estouro do RecordChunk.
 
+**Brilho estourado (#38, #40):** a exposição automática é calculada pela GPU num alvo pequeno (até 8 px de largura) que a
+CPU lê depois. Sem readback desses alvos, a CPU lê um valor velho e a cena ao ar livre fica branca e o bloom exagera.
+`TLG_READBACK_LINEAR=1` (padrão no launcher desde 16/10/2026) baixa os alvos lineares ou de até 8 px de largura; no
+shadPS4 é o "readback linear images". Testado no cânion (`s03_Canyon`): luzes corretas e 30 FPS estáveis, sem custo
+visível. O degamma do color buffer (`color_control.degamma_enable`) **não** é a causa: o TLG nunca liga esse bit.
+
 ---
 
 ## Inventário do dump (local, fora do git)
