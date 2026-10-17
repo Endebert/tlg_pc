@@ -9,6 +9,8 @@
   <a href="https://discord.gg/UMkdMYZh9g">Discord</a>
 </p>
 
+<p align="center"><a href="https://github.com/sponsors/HayatoG"><img src="https://img.shields.io/badge/Sponsor-HayatoG-ea4aaa?logo=githubsponsors&logoColor=white" alt="Sponsor HayatoG on GitHub"></a></p>
+
 <p align="center"><a href="https://github.com/HayatoG/tlg_pc/actions/workflows/build.yml"><img src="https://github.com/HayatoG/tlg_pc/actions/workflows/build.yml/badge.svg" alt="Build"></a></p>
 
 **The Last Guardian** (PS4, CUSA03627 US / CUSA03745 UE, update 01.03) rodando no PC com imagem, som, controle, mouse e teclado e saves, a 30 FPS estáveis (60 FPS e FPS livre opcionais, experimentais) e sem emulador de CPU. O código original do jogo roda nativo no processador. O sistema do PS4 é reimplementado, e a GPU é traduzida para Vulkan.
