@@ -86,6 +86,7 @@ DEFAULT_SETTINGS = {
     'mouse_invert_y': False,
     'key_map': {},                 # PS4 button -> 'Key|Mouse Left' (empty: the default)
     'frame_rate': '30',            # 30 | 60 | unlocked (scripts/tlg_patches.py; TLG_FPS wins)
+    'skip_intro': True,             # skip the startup logos (~38 s; TLG_SKIP_INTRO wins)
     'resolution_width': 1920,      # screen snapshot for output_choice 'auto' (launcher Play)
     'resolution_height': 1080,
 }
@@ -402,9 +403,16 @@ def prepare(settings, log=print):
          '--resolution', resolution(settings),
          '--mods-dir', str(mods_dir()), '--mods-config', str(mods_config())],
     ]
+    # The launcher's Skip startup logos setting reaches tlg_patches.py; TLG_SKIP_INTRO in the
+    # environment wins, as every TLG_* variable does. An empty value counts as unset, so
+    # `TLG_SKIP_INTRO=` cannot silently override the checkbox.
+    skip = os.environ.get('TLG_SKIP_INTRO')
+    if not skip:
+        skip = '1' if settings.get('skip_intro') else '0'
+    patch_env = {**os.environ, 'TLG_SKIP_INTRO': skip}
     for step in steps:
         result = subprocess.run(step, cwd=str(scripts), capture_output=True, text=True,
-                                creationflags=NO_WINDOW)
+                                creationflags=NO_WINDOW, env=patch_env)
         if result.returncode:
             name = next(Path(arg).name for arg in step if arg.endswith('.py'))
             raise RuntimeError(f'{name}: {result.stderr.strip() or result.stdout.strip()}')
@@ -535,6 +543,15 @@ def build_env(settings, extra=None):
     return env
 
 
+def stamp(line):
+    """`[HH:MM:SS.mmm] ` + line: the wall-clock time the line was produced. The probe writes
+    stdout unbuffered (probe.c setvbuf _IONBF), so the stamp is the moment the line appeared, and
+    TLG_FRAME_LOG's CSV uses the same clock. Both writers of out/logs/run-*.log use it, so a log
+    answers "where did the time go" whichever entry point started the game."""
+    now = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
+    return f'[{now}] {line}'
+
+
 def new_log():
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     log = LOG_DIR / f'run-{datetime.datetime.now():%Y%m%d-%H%M%S}.log'
@@ -602,16 +619,18 @@ def main(argv=None, extra_env=None):
         return 1
     notes = []
     prepare(settings, log=lambda line: notes.append(line)
-            if line.startswith(('Frame rate', 'Resolution')) else None)
+            if line.startswith(('Frame rate', 'Resolution', 'Skip intro')) else None)
     process, log = launch(settings, seconds, extra_env)
     print(f'Rodando (log: {log})', flush=True)
     with open(log, 'w', encoding='utf-8') as out:
         for line in notes:
-            print(line, flush=True)
-            out.write(line + '\n')
+            text = stamp(line)
+            print(text, flush=True)
+            out.write(text + '\n')
         for line in process.stdout:
-            sys.stdout.write(line)
-            out.write(line)
+            text = stamp(line)
+            sys.stdout.write(text)
+            out.write(text)
             out.flush()
     return process.wait()
 

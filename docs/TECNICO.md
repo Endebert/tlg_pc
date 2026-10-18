@@ -319,6 +319,9 @@ Uso: `TLG_<OPÇÃO>=valor ./run_tlg.sh`. Os padrões abaixo já estão em `port/
 | `TLG_JITTER` / `TLG_OBJECT_MOTION` | `0` / `0` | jitter de câmera e motion vectors para upscalers temporais |
 | `TLG_PIPELINE_BINARIES` | `0` | cache `VK_KHR_pipeline_binary` (trava no NVIDIA 595) |
 | `TLG_FPS` | `30` | taxa de quadros: `30` (como no PS4), `60` ou `unlocked`; patches só no eboot 1.03, ver [60fps.md](60fps.md) |
+| `TLG_SKIP_INTRO` | `1` | pula os logotipos de inicialização (cerca de 38 s até o menu); `0` mantém os do PS4 (launcher → Jogo) |
+| `TLG_OFFSCREEN` | `0` | `1`: a janela nasce oculta e sem foco (X11/XWayland), para corridas de teste sem roubar o foco da área de trabalho |
+| `TLG_FRAME_LOG` | — | CSV com um quadro por linha (`time_ms,frame_ms,draws`) no caminho dado, escrito a cada flip; usado nas medições de boot e nos A/B |
 | `TLG_FRAME_STATS` | `1` | FPS e diagnóstico de engasgos no log a cada 5 s |
 | `TLG_SHOW_FPS` | `0` | overlay de FPS ligado desde o início (F10 alterna em jogo) |
 | `TLG_UI_LANG` | idioma do sistema | idioma do menu do overlay: `pt_BR` ou `en_US` |

@@ -1,7 +1,9 @@
 from paths import ROOT
+import os
 import struct
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 import tlg_patches as t
 
@@ -100,6 +102,34 @@ class FrameRatePatchTests(unittest.TestCase):
     def test_30_writes_an_empty_patch_file(self):
         applied, lines, blob = self.prepare(b'', '30')
         self.assertEqual((applied, struct.unpack_from('<8sQQ', blob)), ('30', (b'G3PATCH2', 0, 0)))
+
+
+class SkipIntroTests(unittest.TestCase):
+    """The boot logo skip is on by default; TLG_SKIP_INTRO=0 turns it off, and a build whose
+    bytes differ never gets a write."""
+
+    def prepare(self, eboot, skip=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, 'eboot.bin').write_bytes(eboot)
+            with mock.patch.dict(os.environ):
+                os.environ.pop('TLG_SKIP_INTRO', None)
+                if skip is not None:
+                    os.environ['TLG_SKIP_INTRO'] = skip
+                t.prepare(tmp, tmp, '30')
+                return Path(tmp, 'patches.bin').read_bytes()
+
+    def test_on_by_default(self):
+        blob = self.prepare(self_dump(text_with(['skip_intro'])))
+        self.assertEqual([data for _, data in writes_of(blob)],
+                         [new for _, _, new, _ in t.PATCHES['skip_intro']])
+
+    def test_env_zero_turns_it_off(self):
+        blob = self.prepare(self_dump(text_with(['skip_intro'])), skip='0')
+        self.assertEqual(writes_of(blob), [])
+
+    def test_another_build_never_writes(self):
+        blob = self.prepare(self_dump(text_with(['skip_intro'], expected=False)))
+        self.assertEqual(writes_of(blob), [])
 
 
 class ModTitleIdTests(unittest.TestCase):

@@ -68,6 +68,8 @@ TEXT = {
                     'origem muda para Personalizado (TLG_RENDER_RES experimental, incompatível com '
                     'TAA). A predefinição de letras vale só para o DLSS.'),
     'show_fps': ('Show FPS overlay at start (F10 toggles)', 'Mostrar overlay de FPS ao iniciar (F10 alterna)'),
+    'skip_intro': ('Skip the startup logos (about 38 s faster to the menu)',
+                   'Pular os logotipos de inicialização (cerca de 38 s mais rápido até o menu)'),
     'vram': ('Texture cache budget (MB of VRAM)', 'Orçamento do cache de texturas (MB de VRAM)'),
     'vram_hint': ('6 GB card: 5600 · 8 GB: 7000 · 12 GB: 10500 · 16 GB: 14000 · 24 GB: 21500. This is video card memory (VRAM), not RAM; never above your card\'s VRAM.',
                   'Placa de 6 GB: 5600 · 8 GB: 7000 · 12 GB: 10500 · 16 GB: 14000 · 24 GB: 21500. É a memória da placa de vídeo (VRAM), não a RAM; nunca acima da VRAM da placa.'),
@@ -316,6 +318,7 @@ class Launcher:
             ttk.Entry(game, textvariable=var).grid(row=row * 2 + 1, column=0, sticky='ew', pady=(0, 6))
             ttk.Button(game, text=self.t('browse'), command=lambda k=key: self.browse(k)).grid(
                 row=row * 2 + 1, column=1, padx=(6, 0), pady=(0, 6))
+        self.check(game, 4, 'skip_intro')
         audio = ttk.LabelFrame(left, text=self.t('audio'), padding=8)
         audio.grid(sticky='ew', pady=(0, 8))
         self.check(audio, 0, 'native_audio')
@@ -887,10 +890,16 @@ class Launcher:
             return
         self.lines.put(f"{self.t('running')} {log}")
         with open(log, 'w', encoding='utf-8') as out:
-            out.write(f'Frame rate: requested {tlg_run.frame_rate(self.settings)}, applied {tlg_run.applied_frame_rate}\n')
-            out.write(f'Resolution: requested {tlg_run.resolution(self.settings)}, applied {tlg_run.applied_resolution}\n')
+            # tlg_run.stamp: the file gets the same wall-clock stamps as a run_tlg.sh session
+            # (watch_session.sh reads the FPS field after the prefix); the on-screen log stays raw.
+            out.write(tlg_run.stamp(
+                f'Frame rate: requested {tlg_run.frame_rate(self.settings)}, '
+                f'applied {tlg_run.applied_frame_rate}\n'))
+            out.write(tlg_run.stamp(
+                f'Resolution: requested {tlg_run.resolution(self.settings)}, '
+                f'applied {tlg_run.applied_resolution}\n'))
             for line in self.process.stdout:
-                out.write(line)
+                out.write(tlg_run.stamp(line))
                 out.flush()
                 self.lines.put(line.rstrip('\n'))
         code = self.process.wait()
