@@ -77,6 +77,23 @@ if ! ninja -C out/gpu tlggpu > out/gpu-build.log 2>&1; then
     grep -v '^\[' out/gpu-build.log | tail -40 >&2
     echo 'GPU library build failed (full log: out/gpu-build.log)' >&2; exit 1
 fi
+# Optional DLSS (NVIDIA RTX): DLSS_SDK_ROOT=<github.com/NVIDIA/DLSS checkout> builds the bridge
+# (gpu/dlss_bridge, the only code using NVIDIA's SDK) and puts it next to tlg-probe with NVIDIA's
+# libnvidia-ngx-dlss.so. Without them the DLSS upscaler is listed as unavailable.
+if [[ -n ${DLSS_SDK_ROOT:-} ]]; then
+    # Vulkan headers from pkg-config (system package or a user prefix), when the SDK's own
+    # nvsdk_ngx_vk.h includes <vulkan/vulkan.h>.
+    vkinclude=$(pkg-config --cflags-only-I vulkan 2>/dev/null | sed -e 's/^-I//' -e 's/ .*//')
+    cmake -S gpu/dlss_bridge -B out/dlss-bridge -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DDLSS_SDK_ROOT="$DLSS_SDK_ROOT" -DVULKAN_INCLUDE="$vkinclude" >/dev/null
+    if ! ninja -C out/dlss-bridge; then
+        echo 'DLSS bridge build failed' >&2; exit 1
+    fi
+    rm -f out/libnvidia-ngx-dlss.so.*
+    cp out/dlss-bridge/libtlg_dlss.so "$DLSS_SDK_ROOT"/lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.* out/
+    cp "$DLSS_SDK_ROOT/LICENSE.txt" out/NVIDIA-DLSS-LICENSE.txt
+    echo "DLSS bridge: out/libtlg_dlss.so"
+fi
 # $ORIGIN/gpu: packaged copies keep the library next to the binary without patching it.
 gpu=(-Lout/gpu -ltlggpu -Wl,-rpath,'$ORIGIN/gpu' -Wl,-rpath,"$PWD/out/gpu" -rdynamic)
 runtime=(src/runtime*.c)
@@ -92,7 +109,7 @@ fi
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -no-pie "${includes[@]}" -I. -Isrc src/probe.c "${runtime[@]}" src/cpu_check.c src/vulkan_smoke.c out/isa_emulate.o src/isa_rewrite.c out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/tlg-probe
 echo "Built $PWD/out/tlg-probe"
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror tools/gpu_capabilities.c "${libraries[@]}" -o out/tlg-gpu-capabilities
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror "${includes[@]}" tools/gpu_capabilities.c "${libraries[@]}" -o out/tlg-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -lm -o out/pad-test
     out/pad-test
