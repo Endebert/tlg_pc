@@ -312,6 +312,46 @@ void VideoOutDriver::Flip(const Request& req) {
     Vulkan::FrameCapture::OnFlip(req.index >= 0 ? req.port->buffer_slots[req.index].address_left
                                                 : 0);
 
+    // tlg: TLG_FRAME_LOG=<path> — one CSV row per presented frame: the wall-clock time it was
+    // shown (the same clock the launcher's log stamps carry), the interval since the previous
+    // frame and the draws recorded for it. Boot and A/B runs read it to see where the time goes
+    // without parsing the log, which only samples every 5 s.
+    static const char* const frame_log_path = std::getenv("TLG_FRAME_LOG");
+    if (frame_log_path && *frame_log_path) {
+        static FILE* frame_log = [] {
+            FILE* file = std::fopen(frame_log_path, "w");
+            if (file) {
+                std::setvbuf(file, nullptr, _IOLBF, 0);
+                std::fprintf(file, "time_ms,frame_ms,draws\n");
+            }
+            return file;
+        }();
+        // time_ms is wall clock so it lines up with the launcher's log stamps; the interval and
+        // the draw delta come from a monotonic clock and from the previous row, so an NTP step
+        // mid-run cannot yield a negative frame_ms and the first row is not cumulative.
+        static std::chrono::steady_clock::time_point previous_tick;
+        static u64 previous_draws;
+        static bool had_frame;
+        if (frame_log) {
+            const auto wall = std::chrono::system_clock::now();
+            const auto tick = std::chrono::steady_clock::now();
+            const u64 draws = TlgStats::draws.load();
+            const double frame_ms =
+                had_frame
+                    ? std::chrono::duration<double, std::milli>(tick - previous_tick).count()
+                    : 0.0;
+            std::fprintf(frame_log, "%lld,%.3f,%llu\n",
+                         static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                     wall.time_since_epoch())
+                                                     .count()),
+                         frame_ms,
+                         static_cast<unsigned long long>(had_frame ? draws - previous_draws : 0));
+            previous_tick = tick;
+            previous_draws = draws;
+            had_frame = true;
+        }
+    }
+
     // tlg: TLG_FRAME_STATS=1 prints flip rate and frame time spread every 5 seconds.
     static const bool frame_stats = EmulatorSettingsImpl::Flag("TLG_FRAME_STATS", false);
     if (frame_stats) {

@@ -10,7 +10,8 @@ loader (probe.c apply_patches) applies the file after relocation. Image offsets 
 virtual addresses; the Ghidra addresses in the comments (base 0x1000000) are offset + 0x1000000.
 Research: docs/60fps.md.
 
-30 with no mods enabled writes an empty patch file: the game runs exactly as on PS4.
+30 with no mods enabled writes only the boot logo skip; TLG_SKIP_INTRO=0 writes an empty patch
+file and the game runs exactly as on PS4.
 
 Mods/cheats (--mods-dir/--mods-config, mod_patches.py): shadPS4/GoldHEN cheat XML files the
 player drops in the mods folder. Nothing in there has any effect until it is enabled (the
@@ -77,6 +78,21 @@ PATCHES = {
         (0x24f17f8, f32(0.035), f32(0.0175), 'dt snap upper bound 0.035 -> 0.0175'),
         (0x24f17fc, f32(1 / 30), f32(1 / 60), 'dt snap target 1/30 -> 1/60'),
         (0x24f1800, f32(0.0316666663), f32(0.0158333331), 'dt snap lower bound 0.031667 -> 0.015833'),
+    ],
+    # Boot logos (health warning, SIE, Japan Studio): the sequence at image 0x231d62 builds a
+    # table of 0x1C-byte entries on the stack and the loop at 0x231f40 registers every entry
+    # whose first dword is set (`cmp dword [rsp+rax+6F0h],0 / je`). These four `mov ...,1` are
+    # those flags; with all four 0 the loop registers nothing and the ~38 s of unskippable logos
+    # never play. On by default; TLG_SKIP_INTRO=0 keeps the PS4 logos.
+    'skip_intro': [
+        (0x1231d79, bytes.fromhex('c78424f006000001000000'),
+         bytes.fromhex('c78424f006000000000000'), 'logo entry 0 (health warning) enabled -> 0'),
+        (0x1231df4, bytes.fromhex('c784242807000001000000'),
+         bytes.fromhex('c784242807000000000000'), 'logo entry 2 (SIE) enabled -> 0'),
+        (0x1231e45, bytes.fromhex('c784244407000001000000'),
+         bytes.fromhex('c784244407000000000000'), 'logo entry 3 (Japan Studio) enabled -> 0'),
+        (0x1231f16, bytes.fromhex('c784240c07000001000000'),
+         bytes.fromhex('c784240c07000000000000'), 'conditional enable of logo entry 1 -> 0'),
     ],
 }
 
@@ -243,11 +259,14 @@ def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None, resolution
     size = parse_resolution(resolution)
     requested_size = size is not None
     res_writes = []
+    # TLG_SKIP_INTRO=0 turns the boot logo skip off; anything else (the default) applies it.
+    skip = os.environ.get('TLG_SKIP_INTRO', '1') != '0'
+    skip_writes = []
     eboot = None
     # TLG_FPS_PATCHES="a,b" (measurements): these patches instead of the mode's own.
     names = [n for n in os.environ.get('TLG_FPS_PATCHES', '').split(',') if n in PATCHES] or MODES[mode]
-    if names or size:
-        first = 'Frame rate' if names else 'Resolution'   # who needs the eboot for a message
+    if names or size or skip:
+        first = ('Frame rate' if names else 'Skip intro' if skip else 'Resolution')  # who needs the eboot for a message
         try:
             eboot = (Path(game_dir) / 'eboot.bin').read_bytes()
         except OSError as error:
@@ -274,6 +293,9 @@ def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None, resolution
             if size:
                 lines.append(f'Resolution: eboot.bin is not v1.03 ({digest[:16]}…): patch not applied, {GAME_SIZE[0]}x{GAME_SIZE[1]}')
                 size = None
+            if skip:
+                lines.append(f'Skip intro: eboot.bin is not v1.03 ({digest[:16]}…): not applied')
+                skip = False
         else:
             if names:
                 try:
@@ -287,18 +309,28 @@ def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None, resolution
                 except ValueError as error:
                     lines.append(f'Resolution: {error}: patch not applied, {GAME_SIZE[0]}x{GAME_SIZE[1]}')
                     size = None
+            if skip:
+                try:
+                    skip_writes = writes_for(eboot, 'Skip intro', PATCHES['skip_intro'])
+                except ValueError as error:
+                    lines.append(f'Skip intro: {error}: not applied')
+                    skip = False
     for _, data, what in fps_writes:
         lines.append(f'Frame rate patch {what} ({data.hex()})')
     for _, data, what in res_writes:
         lines.append(f'Resolution patch {what} ({data.hex()})')
+    for _, data, what in skip_writes:
+        lines.append(f'Skip intro patch {what} ({data.hex()})')
     mod_writes = []
     if mods_dir:
         mod_writes = compile_mods(game_dir, eboot or read_eboot_elf(game_dir), mods_dir, mods_config, lines)
         for _, data, what in mod_writes:
             lines.append(f'Mod {what} ({data.hex()})')
-    writes = fps_writes + res_writes + mod_writes
+    writes = fps_writes + res_writes + skip_writes + mod_writes
     write_patch_file(Path(out_dir) / 'patches.bin', writes)
     lines.append(f'Frame rate: {mode} FPS mode, {len(fps_writes + mod_writes)} patch writes')
+    if skip:
+        lines.append(f'Skip intro: applied, {len(skip_writes)} patch writes')
     if requested_size:
         applied = f'{size[0]}x{size[1]}' if size else f'{GAME_SIZE[0]}x{GAME_SIZE[1]}'
         lines.append(f'Resolution: {applied}, {len(res_writes)} patch writes')

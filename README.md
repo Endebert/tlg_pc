@@ -29,6 +29,7 @@ Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) 
 ## Novidades
 
 - **60 FPS e FPS livre (experimental):** launcher → Vídeo → "Taxa de quadros (experimental)", ou `TLG_FPS=30|60|unlocked`. O padrão continua 30 FPS, como no PS4. Detalhes em [`docs/60fps.md`](docs/60fps.md) ([#5](https://github.com/HayatoG/tlg_pc/issues/5)).
+- **Pular os logotipos de inicialização:** os avisos e logotipos que levam ~38 s até o menu são pulados por um patch no eboot (ligado por padrão; launcher → Jogo, ou `TLG_SKIP_INTRO=0` para o comportamento do PS4).
 - **Filtros de imagem:** anti-aliasing SMAA, nitidez RCAS (FSR 1) ou CAS (AMD) e ajustes de cor (brilho, contraste, saturação, gama), no launcher e ao vivo no menu do jogo (Insert → Imagem) ([#2](https://github.com/HayatoG/tlg_pc/issues/2)).
 - **Mouse e teclado:** o mouse gira a câmera (sensibilidade e eixo Y invertido no launcher) e as teclas e botões do mouse podem ser remapeados ([#8](https://github.com/HayatoG/tlg_pc/issues/8)).
 - **Sensor de movimento:** o giroscópio do DualShock 4/DualSense funciona direto. Em controles sem sensor, um toque em Share (ou L3+R3) liga o "modo sensor": o analógico esquerdo inclina o controle e X/A sacode. No teclado, T/G inclinam e Y sacode.
@@ -155,6 +156,7 @@ The screenshots and the performance chart are at the top of this page.
 ## What's new
 
 - **60 FPS and unlocked frame rate (experimental):** launcher → Video → "Frame rate (experimental)", or `TLG_FPS=30|60|unlocked`. The default is still 30 FPS, as on PS4. Details in [`docs/60fps.md`](docs/60fps.md) (in Portuguese, [#5](https://github.com/HayatoG/tlg_pc/issues/5)).
+- **Skip the startup logos:** the warnings and logos that take about 38 s to reach the menu are skipped by an eboot patch (on by default; launcher → Game, or `TLG_SKIP_INTRO=0` for the PS4 behaviour).
 - **Image filters:** SMAA anti-aliasing, RCAS (FSR 1) or CAS (AMD) sharpening and colour adjustments (brightness, contrast, saturation, gamma), in the launcher and live in the in-game menu (Insert → Image) ([#2](https://github.com/HayatoG/tlg_pc/issues/2)).
 - **Mouse and keyboard:** the mouse turns the camera (sensitivity and inverted Y in the launcher), and keys and mouse buttons can be remapped ([#8](https://github.com/HayatoG/tlg_pc/issues/8)).
 - **Motion sensor:** the DualShock 4/DualSense gyro works as is. On controllers without one, a tap on Share (or L3+R3) toggles "sensor mode": the left stick tilts the controller and cross/A shakes it. On the keyboard, T/G tilt and Y shakes.

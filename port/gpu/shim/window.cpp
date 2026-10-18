@@ -43,6 +43,23 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
                            app_id && *app_id ? app_id : "tlg-pc");
         SDL_SetHint(SDL_HINT_APP_ID, app_id && *app_id ? app_id : "tlg-pc");
     }
+    // tlg: TLG_OFFSCREEN=1 (unattended test runs): the window is created on X11/XWayland, hidden
+    // and not focusable, so it never shows on the desktop or takes focus from the player's own
+    // work. Focus only gates the mouse mode (sdl_window.h focused), and
+    // sceSystemServiceReceiveEvent never reports a focus event, so the game keeps running.
+    // The hidden window needs X11 (an unmapped Wayland surface cannot present), and forcing the
+    // driver where there is no DISPLAY would fail SDL_Init and abort below: without one the flag
+    // is ignored and the window simply shows.
+    const char* offscreen_env = std::getenv("TLG_OFFSCREEN");
+    const char* display = std::getenv("DISPLAY");
+    bool offscreen = offscreen_env && offscreen_env[0] == '1';
+    if (offscreen && !(display && *display)) {
+        LOG_WARNING(Frontend, "TLG_OFFSCREEN: no DISPLAY (X11/XWayland); the window will show");
+        offscreen = false;
+    }
+    if (offscreen) {
+        SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11");
+    }
     // Gamepads are sampled by runtime_pad.c; their events are pumped here with the window's.
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         UNREACHABLE_MSG("Failed to initialize SDL video: {}", SDL_GetError());
@@ -71,6 +88,10 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, height_);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_RESIZABLE_BOOLEAN, true);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_VULKAN_BOOLEAN, true);
+    if (offscreen) {
+        SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, true);
+        SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_FOCUSABLE_BOOLEAN, false);
+    }
     base_title = title;
     window = SDL_CreateWindowWithProperties(props);
     SDL_DestroyProperties(props);
