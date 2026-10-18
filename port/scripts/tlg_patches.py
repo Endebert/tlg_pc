@@ -18,8 +18,10 @@ file's own isEnabled="true", or mods.json), same contract as the built-in patche
 """
 import argparse
 import hashlib
+import math
 import os
 from pathlib import Path
+import re
 import struct
 import sys
 
@@ -32,6 +34,9 @@ SELF_MAGIC = b'O\x15=\x1d'
 TEXT_FILE_OFFSET = 0x4000      # PT_LOAD 0 (R E): file offset of vaddr 0
 TEXT_SIZE = 0x16b2d5c
 GHIDRA_BASE = 0x1000000
+# Segment types the loader maps: PT_LOAD and PT_SCE_RELRO (read-only data fixed up at load).
+LOADED_SEGMENTS = (1, 0x61000010)
+GAME_SIZE = (1920, 1080)       # what the game renders on a PS4 with a 1080p TV
 
 
 def f32(value):
@@ -88,23 +93,96 @@ MODES = {
 ENGINE_FPS = {'30': 30, '60': 60, 'unlocked': 240}
 
 
+def parse_number(value):
+    """A non-negative number (text or number, a comma may be the decimal point) rounded to the
+    nearest integer; None when it is not one."""
+    try:
+        number = float(str(value).strip().replace(',', '.'))
+    except ValueError:
+        return None
+    return round(number) if math.isfinite(number) and number >= 0 else None
+
+
+def parse_resolution(value):
+    """(width, height) of \"WxH\" (digits only, one optional 'x'); a side that is 0, empty or
+    missing (or over 65535, what the game's u16 holds) is worked out from the other one in
+    16:9. None, the game's own, when neither is a size, when it is the game's own size, or
+    when a side is below 64 (a display size, not a mode)."""
+    sides = re.fullmatch(r'(\d*)x(\d*)', str(value or '').strip().lower().replace(' ', ''))
+    width, height = ((side if side and side <= 0xffff else None)
+                     for side in (parse_number(text) for text in (sides.groups() if sides else ('', ''))))
+    if width and not height:
+        height = round(width * 9 / 16)
+    elif height and not width:
+        width = round(height * 16 / 9)
+    return (width, height) if width and height and min(width, height) >= 64 \
+        and (width, height) != GAME_SIZE and width <= 0xffff and height <= 0xffff else None
+
+
+def resolution_patches(width, height):
+    """{name: entries} of a resolution. The mode table (0x18 bytes per entry: u16 render W,H,
+    output W,H; u64 checkerboard; name pointer) starts with the Pro list's default entry at
+    0x26ec3e8: 1680x1890 checkerboard, output 3360x1890; it becomes WxH, WxH, no checkerboard.
+    The 23 bytes at 0x1c4fa6a in JsDevice::CreateDevice (0x1c4f9f0) are `jne +0x167;
+    cmp dword [rsp+0x124], 0x438; jbe +0x156`, the output height > 1080 test that picks the Pro
+    list: NOPed, the Pro list is always used."""
+    return {'resolution': [
+        (0x26ec3e8, bytes.fromhex('90066207200d62070100000000000000'),
+         struct.pack('<4HQ', width, height, width, height, 0),
+         f'default mode 1680x1890 checkerboard -> {width}x{height}'),
+        (0x1c4fa6a, bytes.fromhex('0f856701000081bc2424010000380400000f8656010000'), b'\x90' * 23,
+         'CreateDevice: always use the Pro mode list'),
+    ]}
+
+
+def file_offset(eboot, offset, length):
+    """File offset of image bytes [offset, offset + length): text by TEXT_FILE_OFFSET, anything
+    after it (the data tables) through the ELF's PT_LOAD and PT_SCE_RELRO headers; None when no
+    segment holds them."""
+    if 0 <= offset and offset + length <= TEXT_SIZE:
+        return TEXT_FILE_OFFSET + offset
+    if eboot[:4] != b'\x7fELF' or len(eboot) < 0x40:
+        return None
+    phoff, = struct.unpack_from('<Q', eboot, 0x20)
+    phentsize, phnum = struct.unpack_from('<HH', eboot, 0x36)
+    for i in range(phnum):
+        position = phoff + i * phentsize
+        if position + 56 > len(eboot):
+            break
+        kind, _, p_offset, vaddr, _, filesz, _, _ = struct.unpack_from('<IIQQQQQQ', eboot, position)
+        if kind in LOADED_SEGMENTS and vaddr <= offset and offset + length <= vaddr + filesz \
+                and p_offset + offset - vaddr + length <= len(eboot):
+            return p_offset + offset - vaddr
+    return None
+
+
 def normalize_mode(value):
     value = (value or '30').strip().lower()
     return {'unlimited': 'unlocked', 'uncapped': 'unlocked', 'free': 'unlocked', '0': 'unlocked'}.get(value, value)
 
 
 def mode_writes(eboot, names):
-    """[(image offset, new bytes, description)] after checking every expected byte in eboot."""
+    """[(image offset, new bytes, description)] for named PATCHES groups, after checking every
+    expected byte in eboot."""
+    return [write for name in names for write in writes_for(eboot, name, PATCHES[name])]
+
+
+def writes_for(eboot, group, entries):
+    """[(image offset, new bytes, description)] for explicit (address, expected, new, what)
+    entries, after checking every expected byte in eboot. Addresses past the text segment (the
+    resolution mode table) are located through the ELF's loadable segments."""
     writes = []
-    for name in names:
-        for address, expected, new, what in PATCHES[name]:
-            offset = address - GHIDRA_BASE
-            if not (0 <= offset and offset + len(expected) <= TEXT_SIZE) or len(expected) != len(new):
-                raise ValueError(f'{name}: bad patch entry at {address:#x}')
-            found = eboot[TEXT_FILE_OFFSET + offset:TEXT_FILE_OFFSET + offset + len(expected)]
-            if found != expected:
-                raise ValueError(f'{name}: {address:#x} has {found.hex()}, expected {expected.hex()}')
-            writes.append((offset, new, f'{name}: {address:#x} {what}'))
+    for address, expected, new, what in entries:
+        offset = address - GHIDRA_BASE
+        if len(expected) != len(new):
+            raise ValueError(f'{group}: bad patch entry at {address:#x}')
+        start = file_offset(eboot, offset, len(expected))
+        if start is None:
+            raise ValueError(f'{group}: {address:#x} is not in the eboot image')
+        found = eboot[start:start + len(expected)]
+        if found != expected:
+            raise ValueError(f'{group}: {address:#x} has {found.hex()}, expected {expected.hex()}')
+        writes.append((offset, new, f'{group}: {address:#x} {what}'))
     return writes
 
 
@@ -151,25 +229,30 @@ def compile_mods(game_dir, eboot, mods_dir, mods_config, lines):
         return []
 
 
-def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None):
-    """Writes out/patches.bin for the mode plus any enabled mod; returns (applied mode, lines).
-    Any problem with the frame rate patches (other eboot build, unexpected bytes) falls back to
-    30 FPS without them; a mod problem only drops that mod, never the frame rate patches."""
+def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None, resolution='native'):
+    """Writes out/patches.bin for the mode, the resolution and any enabled mod; returns
+    (applied mode, lines). Any problem with the frame rate patches (other eboot build,
+    unexpected bytes) falls back to 30 FPS without them; a resolution problem falls back to the
+    game's own 1920x1080; a mod problem only drops that mod, never the built-in patches."""
     mode = normalize_mode(mode)
     lines = []
     if mode not in MODES:
         lines.append(f'Frame rate: unknown TLG_FPS={mode!r}; using 30')
         mode = '30'
     fps_writes = []
+    size = parse_resolution(resolution)
+    requested_size = size is not None
+    res_writes = []
     eboot = None
     # TLG_FPS_PATCHES="a,b" (measurements): these patches instead of the mode's own.
     names = [n for n in os.environ.get('TLG_FPS_PATCHES', '').split(',') if n in PATCHES] or MODES[mode]
-    if names:
+    if names or size:
+        first = 'Frame rate' if names else 'Resolution'   # who needs the eboot for a message
         try:
             eboot = (Path(game_dir) / 'eboot.bin').read_bytes()
         except OSError as error:
             eboot = b''
-            lines.append(f'Frame rate: cannot read eboot.bin ({error})')
+            lines.append(f'{first}: cannot read eboot.bin ({error})')
         digest = hashlib.sha256(eboot).hexdigest()
         usable = digest == EBOOT_103_SHA256
         if not usable and eboot[:4] == SELF_MAGIC:
@@ -181,28 +264,44 @@ def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None):
                 from prepare import parse_self
                 eboot = bytes(parse_self(eboot)[0])
                 usable = True
-                lines.append(f'Frame rate: eboot.bin is a SELF ({digest[:16]}…), checking the ELF inside')
+                lines.append(f'{first}: eboot.bin is a SELF ({digest[:16]}…), checking the ELF inside')
             except ValueError as error:
-                lines.append(f'Frame rate: cannot read the SELF eboot.bin ({error})')
+                lines.append(f'{first}: cannot read the SELF eboot.bin ({error})')
         if not usable:
-            lines.append(f'Frame rate: eboot.bin is not v1.03 ({digest[:16]}…): {mode} FPS patches not applied, 30 FPS')
-            mode = '30'
+            if names:
+                lines.append(f'Frame rate: eboot.bin is not v1.03 ({digest[:16]}…): {mode} FPS patches not applied, 30 FPS')
+                mode = '30'
+            if size:
+                lines.append(f'Resolution: eboot.bin is not v1.03 ({digest[:16]}…): patch not applied, {GAME_SIZE[0]}x{GAME_SIZE[1]}')
+                size = None
         else:
-            try:
-                fps_writes = mode_writes(eboot, names)
-            except ValueError as error:
-                lines.append(f'Frame rate: {error}: patches not applied, 30 FPS')
-                mode, fps_writes = '30', []
+            if names:
+                try:
+                    fps_writes = mode_writes(eboot, names)
+                except ValueError as error:
+                    lines.append(f'Frame rate: {error}: patches not applied, 30 FPS')
+                    mode, fps_writes = '30', []
+            if size:
+                try:
+                    res_writes = writes_for(eboot, 'Resolution', resolution_patches(*size)['resolution'])
+                except ValueError as error:
+                    lines.append(f'Resolution: {error}: patch not applied, {GAME_SIZE[0]}x{GAME_SIZE[1]}')
+                    size = None
     for _, data, what in fps_writes:
         lines.append(f'Frame rate patch {what} ({data.hex()})')
+    for _, data, what in res_writes:
+        lines.append(f'Resolution patch {what} ({data.hex()})')
     mod_writes = []
     if mods_dir:
         mod_writes = compile_mods(game_dir, eboot or read_eboot_elf(game_dir), mods_dir, mods_config, lines)
         for _, data, what in mod_writes:
             lines.append(f'Mod {what} ({data.hex()})')
-    writes = fps_writes + mod_writes
+    writes = fps_writes + res_writes + mod_writes
     write_patch_file(Path(out_dir) / 'patches.bin', writes)
-    lines.append(f'Frame rate: {mode} FPS mode, {len(writes)} patch writes')
+    lines.append(f'Frame rate: {mode} FPS mode, {len(fps_writes + mod_writes)} patch writes')
+    if requested_size:
+        applied = f'{size[0]}x{size[1]}' if size else f'{GAME_SIZE[0]}x{GAME_SIZE[1]}'
+        lines.append(f'Resolution: {applied}, {len(res_writes)} patch writes')
     return mode, lines
 
 
@@ -213,8 +312,10 @@ def main():
     p.add_argument('--mode', default='30', help='30, 60 or unlocked')
     p.add_argument('--mods-dir', help='folder of shadPS4/GoldHEN cheat XML files')
     p.add_argument('--mods-config', help='mods.json: {"enabled": [...], "disabled": [...]}')
+    p.add_argument('--resolution', default='native',
+                   help="WxH; a side that is 0 is worked out in 16:9, both 0 or 1920x1080: the game's own")
     a = p.parse_args()
-    _, lines = prepare(a.game_dir, a.out, a.mode, a.mods_dir, a.mods_config)
+    _, lines = prepare(a.game_dir, a.out, a.mode, a.mods_dir, a.mods_config, a.resolution)
     print('\n'.join(lines))
 
 

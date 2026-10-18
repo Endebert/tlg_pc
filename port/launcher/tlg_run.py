@@ -86,10 +86,46 @@ DEFAULT_SETTINGS = {
     'mouse_invert_y': False,
     'key_map': {},                 # PS4 button -> 'Key|Mouse Left' (empty: the default)
     'frame_rate': '30',            # 30 | 60 | unlocked (scripts/tlg_patches.py; TLG_FPS wins)
+    'resolution_width': 1920,      # screen snapshot for output_choice 'auto' (launcher Play)
+    'resolution_height': 1080,
 }
 FRAME_RATES = ['30', '60', 'unlocked']
 # The frame rate mode prepare() really applied (another eboot build stays at 30).
 applied_frame_rate = '30'
+# The resolution prepare() really applied ('native' = the game's own 1920x1080).
+applied_resolution = 'native'
+
+# Output choices of the launcher's combobox; resolution() turns them into the startup patch
+# ('auto' = the screen snapshot taken at Play, never TLG_OUTPUT_RES: the live path is the one
+# that put artifacts on screen).
+OUTPUT_CHOICES = ('auto', '1280x720', '1920x1080', '2560x1440', '3840x2160')
+
+
+def parse_source(value):
+    """Normalized 'WxH' of a typed source, or '' while incomplete/invalid."""
+    text = str(value or '').strip().lower().replace('×', 'x').replace(' ', '')
+    width, _, height = text.partition('x')
+    if width.isdigit() and height.isdigit() and int(width) >= 64 and int(height) >= 64:
+        return f'{int(width)}x{int(height)}'
+    return '' if text else ''
+
+
+def play_env(settings):
+    """TLG_RENDER_RES/TLG_UPSCALER for this launch. The output goes through the startup patch
+    (resolution(), tlg_patches), never through TLG_OUTPUT_RES: the live resample path is what
+    put artifacts on screen at non-1080p outputs, while the patched guest size presents native
+    (the fork's proven-clean setup: ini output_res stays 1920x1080). A custom source becomes
+    the experimental TLG_RENDER_RES session. The upscaler goes through the env too (build_env
+    defaults TLG_UPSCALER to off, which would otherwise override the ini); only when the ini
+    has the key — an untouched section keeps the old shell-env behaviour."""
+    env = {}
+    ini = read_ini(USER_DIR / 'tlg.ini')
+    source = parse_source(settings.get('source_res'))
+    if source:
+        env['TLG_RENDER_RES'] = source
+    if 'upscaler' in ini:
+        env['TLG_UPSCALER'] = ini['upscaler']
+    return env
 
 # Keyboard and mouse defaults of src/runtime_pad.c, in its key_map syntax ('|': several).
 DEFAULT_KEYS = {
@@ -285,6 +321,20 @@ def frame_rate(settings):
     return os.environ.get('TLG_FPS') or str(settings.get('frame_rate', '30'))
 
 
+def resolution(settings):
+    """The requested render resolution for the startup patch: TLG_RESOLUTION (WxH) wins, else the
+    output choice; 'auto' is the launcher's screen snapshot (resolution_width/height, refreshed
+    at Play), defaulting to 1920x1080. 1920x1080 itself is 'native' (the game's own mode list,
+    no patch). A custom source_res stays a live TLG_RENDER_RES session instead (play_env)."""
+    if os.environ.get('TLG_RESOLUTION'):
+        return os.environ['TLG_RESOLUTION']
+    choice = settings.get('output_choice') or 'auto'   # a fresh settings file: same as the GUI
+    if choice == 'auto':
+        width, height = settings.get('resolution_width'), settings.get('resolution_height')
+        choice = f"{width or 1920}x{height or 1080}"
+    return choice if choice and choice != '1920x1080' else 'native'
+
+
 def mods_dir():
     """TLG_MODS_DIR, else USER_DIR/mods (created empty on first use so the player sees where
     to drop shadPS4/GoldHEN cheat XML files)."""
@@ -321,10 +371,23 @@ def set_mod_enabled(key, enabled):
     path.write_text(json.dumps({'enabled': sorted(on), 'disabled': sorted(off)}, indent=2))
 
 
+def parse_summary(line):
+    """('frame_rate'|'resolution', value) of a scripts/tlg_patches.py summary line; None for
+    any other line. Values are what prepare() really applied; the resolution's fallback label
+    ('1920x1080') is normalized to 'native' so requested/applied report the same word."""
+    if line.startswith('Frame rate: ') and line.endswith(' patch writes'):
+        return 'frame_rate', line.split()[2]
+    if line.startswith('Resolution: ') and line.endswith(' patch writes'):
+        value = line.split()[1].rstrip(',')
+        return 'resolution', 'native' if value == '1920x1080' else value
+    return None
+
+
 def prepare(settings, log=print):
-    """Builds out/boot-linked.bin, out/content.bin and out/patches.bin (frame rate patches and
-    any enabled mod); returns the module list that was linked."""
-    global applied_frame_rate
+    """Builds out/boot-linked.bin, out/content.bin and out/patches.bin (frame rate, resolution
+    patches and any enabled mod); returns the module list that was linked."""
+    global applied_frame_rate, applied_resolution
+    applied_resolution = 'native'   # a run without a Resolution: line applied the game's own size
     game = settings['game_dir']
     scripts = PORT_DIR / 'scripts'
     modules = ['libc.prx', 'libSceFios2.prx']
@@ -336,6 +399,7 @@ def prepare(settings, log=print):
         [*python_command(scripts / 'link_modules.py'), game, '--out', str(OUT_DIR), '--modules', *modules],
         [*python_command(scripts / 'content_profile.py'), game, '--out', str(OUT_DIR)],
         [*python_command(scripts / 'tlg_patches.py'), game, '--out', str(OUT_DIR), '--mode', frame_rate(settings),
+         '--resolution', resolution(settings),
          '--mods-dir', str(mods_dir()), '--mods-config', str(mods_config())],
     ]
     for step in steps:
@@ -346,8 +410,12 @@ def prepare(settings, log=print):
             raise RuntimeError(f'{name}: {result.stderr.strip() or result.stdout.strip()}')
         for line in result.stdout.splitlines():
             log(line)
-            if line.startswith('Frame rate: ') and line.endswith(' patch writes'):
-                applied_frame_rate = line.split()[2]
+            summary = parse_summary(line)
+            if summary:
+                if summary[0] == 'frame_rate':
+                    applied_frame_rate = summary[1]
+                else:
+                    applied_resolution = summary[1]
     isa_table(log)
     return modules
 
@@ -494,6 +562,11 @@ def launch(settings, seconds=0, extra_env=None):
         'mouse_sensitivity': f"{float(settings.get('mouse_sensitivity', 1.0)):.2f}",
         'mouse_invert_y': int(bool(settings.get('mouse_invert_y', False))),
         'key_map': key_map_spec(settings.get('key_map') or {}),
+        # The live path (host resample of the guest frame at a non-1080 target) is what put
+        # artifacts on screen: the output goes through the startup patch (prepare) instead, so
+        # the live target always stays the game's own 1920x1080. Written every launch — also
+        # resets output_res values HEAD-era builds wrote for an explicit output choice.
+        'output_res': '1920x1080',
     })
     log = new_log()
     cmd = [str(PROBE), str(OUT_DIR / 'boot-linked.bin'), '--app0', settings['game_dir'],
@@ -507,7 +580,7 @@ def launch(settings, seconds=0, extra_env=None):
     return process, log
 
 
-def main(argv=None):
+def main(argv=None, extra_env=None):
     argv = sys.argv[1:] if argv is None else argv
     attach_stdio()
     seconds = int(argv[0]) if argv and argv[0].isdigit() else 0
@@ -528,8 +601,9 @@ def main(argv=None):
             print(f'{"Compile primeiro" if kind == "not_built" else "Faltando"}: {detail}', file=sys.stderr)
         return 1
     notes = []
-    prepare(settings, log=lambda line: notes.append(line) if line.startswith('Frame rate') else None)
-    process, log = launch(settings, seconds)
+    prepare(settings, log=lambda line: notes.append(line)
+            if line.startswith(('Frame rate', 'Resolution')) else None)
+    process, log = launch(settings, seconds, extra_env)
     print(f'Rodando (log: {log})', flush=True)
     with open(log, 'w', encoding='utf-8') as out:
         for line in notes:

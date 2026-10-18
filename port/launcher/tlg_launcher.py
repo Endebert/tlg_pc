@@ -207,7 +207,7 @@ COLOR_RANGES = {'color_brightness': (-0.5, 0.5), 'color_contrast': (0.5, 1.5),
 
 # Rendering section: upscaler and resolution, applied through tlg.ini (+ TLG_RENDER_RES for a
 # custom source) on the next launch. output_res 'auto' resolves to the window/desktop size.
-OUTPUT_CHOICES = ('auto', '1280x720', '1920x1080', '2560x1440', '3840x2160')
+OUTPUT_CHOICES = tlg_run.OUTPUT_CHOICES  # shared with tlg_run.play_env (headless --play, tests)
 PRESET_CHOICES = ('0', '1', '2', '3', '4')  # tlg_settings.h Preset: NativeAA..UltraPerformance
 DLSS_PRESET_CHOICES = ('auto', '10', '11', '12', '13')  # NVIDIA hint: default, J, K, L, M
 UPSCALER_CHOICES = ('off', 'fsr3', 'taa', 'dlss')  # fsr4 assets are not part of TLG's packages
@@ -220,6 +220,10 @@ PRESET_LABELS = {'0': 'preset_native', '1': 'preset_quality', '2': 'preset_balan
 UPSCALER_LABELS = {'off': 'upscaler_off', 'fsr3': 'upscaler_fsr3',
                    'taa': 'upscaler_taa', 'dlss': 'upscaler_dlss'}
 DLSS_PRESET_LABELS = {'auto': 'dlss_auto', '10': 'J', '11': 'K', '12': 'L', '13': 'M'}
+
+# Launch resolution env: tlg_run.play_env, shared with the headless --play path.
+play_env = tlg_run.play_env
+parse_source = tlg_run.parse_source
 
 
 def art_path(settings, name):
@@ -433,7 +437,9 @@ class Launcher:
         self.output_box = ttk.Combobox(
             parent, values=[self.t(OUTPUT_LABELS.get(k, k)) for k in OUTPUT_CHOICES],
             state='readonly', width=28)
-        self.output_box.current(self._choice(OUTPUT_CHOICES, self.render_ini['output_res']))
+        # The saved choice (the startup patch); a fresh install falls back to the ini's value.
+        self.output_box.current(self._choice(
+            OUTPUT_CHOICES, str(self.settings.get('output_choice') or self.render_ini['output_res'])))
         self.output_box.grid(row=row + 3, column=1, sticky='w', padx=6, pady=2)
         self.output_box.bind('<<ComboboxSelected>>', lambda _: self.render_changed())
 
@@ -482,12 +488,7 @@ class Launcher:
 
     @staticmethod
     def parse_source(value):
-        """Normalized 'WxH' of a typed source, or '' while incomplete/invalid."""
-        text = str(value or '').strip().lower().replace('×', 'x').replace(' ', '')
-        width, _, height = text.partition('x')
-        if width.isdigit() and height.isdigit() and int(width) >= 64 and int(height) >= 64:
-            return f'{int(width)}x{int(height)}'
-        return '' if text else ''
+        return parse_source(value)
 
     @staticmethod
     def _even(value, scale):
@@ -535,8 +536,8 @@ class Launcher:
     def render_changed(self):
         """Writes the Rendering section: the game's keys to tlg.ini, source_res/output choice to
         settings.json. A preset pick clears a custom source (the preset becomes the source again)
-        and is remembered as the preset to restore; 'auto' output resolves to a concrete table
-        entry at play()."""
+        and is remembered as the preset to restore; the output becomes the startup patch — 'auto'
+        resolves to the screen snapshot taken at Play (tlg_run.resolution)."""
         preset = self.current_preset()
         if preset != 'custom':
             self.settings['source_res'] = ''
@@ -546,11 +547,12 @@ class Launcher:
             values = {'preset': self.render_ini['preset']}
         values['upscaler'] = UPSCALER_CHOICES[self.upscaler_box.current()]
         values['dlss_preset'] = DLSS_PRESET_CHOICES[self.dlss_preset_box.current()]
+        # The output becomes the startup resolution patch (resolution() at prepare). tlg.ini
+        # output_res is deliberately not written here: tlg_run.launch() forces it to 1920x1080
+        # on every launch — resampling the guest frame there (the live path) is what put
+        # artifacts on screen at non-1080p outputs.
         output = OUTPUT_CHOICES[self.output_box.current()]
-        self.render_ini['output_res'] = output
         self.settings['output_choice'] = output
-        if output != 'auto':
-            values['output_res'] = output
         tlg_run.USER_DIR.mkdir(parents=True, exist_ok=True)
         tlg_run.update_ini(tlg_run.USER_DIR / 'tlg.ini', values)
         tlg_run.save_settings(self.settings)
@@ -863,6 +865,9 @@ class Launcher:
         if self.process:
             messagebox.showinfo(self.t('title'), self.t('already'))
             return
+        # The screen snapshot output_choice 'auto' resolves against (resolution()).
+        self.settings['resolution_width'] = self.root.winfo_screenwidth()
+        self.settings['resolution_height'] = self.root.winfo_screenheight()
         self.changed()
         self.launch_env = self.play_env()
         self.append(self.t('preparing'))
@@ -871,27 +876,7 @@ class Launcher:
         threading.Thread(target=self.run_game, daemon=True).start()
 
     def play_env(self):
-        """Resolution env for this launch: 'auto' output resolves to the nearest table entry of
-        the current screen, a custom source becomes the experimental TLG_RENDER_RES session.
-        The upscaler goes through the env too (build_env defaults TLG_UPSCALER to off, which
-        would otherwise override the ini); only when the ini has the key — an untouched
-        section keeps the old shell-env behaviour."""
-        env = {}
-        choice = self.settings.get('output_choice', 'auto')
-        if choice == 'auto':
-            width, height = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-            entries = sorted(tuple(int(v) for v in c.split('x')) for c in OUTPUT_CHOICES
-                             if c != 'auto')
-            match = min(entries, key=lambda e: (abs(e[0] - width), abs(e[1] - height)))
-            env['TLG_OUTPUT_RES'] = f'{match[0]}x{match[1]}'
-        else:
-            env['TLG_OUTPUT_RES'] = choice
-        source = self.parse_source(self.settings.get('source_res'))
-        if source:
-            env['TLG_RENDER_RES'] = source
-        if 'upscaler' in tlg_run.read_ini(tlg_run.USER_DIR / 'tlg.ini'):
-            env['TLG_UPSCALER'] = tlg_run.read_ini(tlg_run.USER_DIR / 'tlg.ini')['upscaler']
-        return env
+        return play_env(self.settings)
 
     def run_game(self):
         try:
@@ -903,6 +888,7 @@ class Launcher:
         self.lines.put(f"{self.t('running')} {log}")
         with open(log, 'w', encoding='utf-8') as out:
             out.write(f'Frame rate: requested {tlg_run.frame_rate(self.settings)}, applied {tlg_run.applied_frame_rate}\n')
+            out.write(f'Resolution: requested {tlg_run.resolution(self.settings)}, applied {tlg_run.applied_resolution}\n')
             for line in self.process.stdout:
                 out.write(line)
                 out.flush()
@@ -946,7 +932,9 @@ def main():
     if args[:1] == ['--clear-shader-cache']:
         sys.exit(tlg_run.main(args))
     if args[:1] == ['--play']:
-        sys.exit(tlg_run.main(args[1:]))
+        # Same launch env as the Play button, from the saved settings; no launcher window.
+        settings = tlg_run.load_settings()
+        sys.exit(tlg_run.main(args[1:], extra_env=play_env(settings)))
     root = tk.Tk(className='tlg-pc')  # matches StartupWMClass in the desktop entry
     try:
         ttk.Style().theme_use('clam')
