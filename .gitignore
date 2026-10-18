@@ -26,6 +26,7 @@ analysis/*.c
 __pycache__/
 *.pyc
 .DS_Store
+.worktrees
 
 # Saídas de build do port e dados locais do jogo preparados
 port/out/
