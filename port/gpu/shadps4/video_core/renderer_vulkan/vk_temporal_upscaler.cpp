@@ -7,9 +7,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <string>
 
 #include <vk_mem_alloc.h>
@@ -33,6 +35,24 @@
 namespace Vulkan {
 
 namespace {
+
+// TLG_UPSCALER_DEBUG=1: one line whenever a call site's state changes (why DLSS/FSR/TAA did
+// or did not dispatch this frame). State-change gated per site, so the log stays small.
+void UpscalerDebug(const char* id, int state, const char* fmt, ...) {
+    static const bool enabled = std::getenv("TLG_UPSCALER_DEBUG") != nullptr;
+    if (!enabled) return;
+    static std::map<const char*, int> seen;
+    auto [it, fresh] = seen.try_emplace(id, state);
+    if (!fresh && it->second == state) return;
+    it->second = state;
+    std::va_list args;
+    va_start(args, fmt);
+    std::printf("Upscaler[%s] state=%d: ", id, state);
+    std::vprintf(fmt, args);
+    std::printf("\n");
+    va_end(args);
+}
+
 
 FfxVkPortableImage Describe(vk::Image image, vk::Format format, u32 width, u32 height,
                             vk::ImageUsageFlags usage, vk::ImageAspectFlags aspect,
@@ -358,14 +378,25 @@ bool TemporalUpscaler::OnFrameStart() {
 }
 
 void TemporalUpscaler::OnDispatch(u64 cs_hash) {
-    if (cs_hash != trigger_hash || done_this_frame || failed || Scaled()) {
+    if (cs_hash != trigger_hash) {
+        return;
+    }
+    if (done_this_frame || failed || Scaled()) {
+        UpscalerDebug("dispatch.skip", int(done_this_frame) | int(failed) << 1 | int(Scaled()) << 2,
+                      "done=%d failed=%d scaled=%d", int(done_this_frame), int(failed),
+                      int(Scaled()));
         return;
     }
     done_this_frame = true;
     if (!scene_color || !camera_motion.Ready() || !Active()) {
+        UpscalerDebug("dispatch.guard", int(!scene_color) | int(!camera_motion.Ready()) << 1 |
+                                            int(!Active()) << 2,
+                      "no_scene=%d no_camera=%d inactive=%d", int(!scene_color),
+                      int(!camera_motion.Ready()), int(!Active()));
         reset = true;
         return;
     }
+    UpscalerDebug("dispatch.run", 1, "calling Run()");
     Run();
 }
 
@@ -1010,12 +1041,23 @@ void TemporalUpscaler::Run() {
     if (color.info.pixel_format != vk::Format::eR16G16B16A16Sfloat ||
         depth.info.size.width != ow || depth.info.size.height != oh ||
         !(color.usage_flags & vk::ImageUsageFlagBits::eStorage)) {
+        UpscalerDebug("run.format", int(color.info.pixel_format != vk::Format::eR16G16B16A16Sfloat) |
+                                        int(depth.info.size.width != ow) << 1 |
+                                        int(depth.info.size.height != oh) << 2 |
+                                        int(!(color.usage_flags & vk::ImageUsageFlagBits::eStorage)) << 3,
+                      "rgba16f=%d depth_w=%d depth_h=%d no_storage=%d",
+                      int(color.info.pixel_format == vk::Format::eR16G16B16A16Sfloat),
+                      int(depth.info.size.width != ow), int(depth.info.size.height != oh),
+                      int(!(color.usage_flags & vk::ImageUsageFlagBits::eStorage)));
         return;
     }
     if (!EnsureResources(w, h, ow, oh, true)) {
+        UpscalerDebug("run.resources", 1, "EnsureResources(%u, %u, %u, %u) failed", w, h, ow, oh);
         failed = true;
         return;
     }
+    UpscalerDebug("run.setup", int(reduced), "reduced=%d %ux%u -> %ux%u", int(reduced), w, h, ow,
+                  oh);
     const auto depth_format = depth.info.pixel_format;
     const auto depth_view =
         CachedView(depth, depth_format, vk::ImageAspectFlagBits::eDepth);
@@ -1329,6 +1371,11 @@ void TemporalUpscaler::OnDraw(u64 vs_hash, VideoCore::ImageId color,
                                   camera_motion.Ready() && ldr_target == color,
                                   Active() && !failed)) {
     case UiComposition::Background::None:
+        UpscalerDebug("draw.none", int(ui_draw) | int(camera_motion.Ready() && ldr_target == color) << 1 |
+                                       int(Active() && !failed) << 2,
+                      "ui_draw=%d scene_ready=%d active=%d", int(ui_draw),
+                      int(camera_motion.Ready() && ldr_target == color),
+                      int(Active() && !failed));
         return;
     case UiComposition::Background::Temporal:
         RunScaled();

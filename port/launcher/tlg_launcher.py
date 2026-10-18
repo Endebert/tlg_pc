@@ -42,6 +42,31 @@ TEXT = {
     'fps_unlocked': ('Unlocked (up to the display)', 'Livre (até a taxa do monitor)'),
     'fps_hint': ('60/unlocked patch eboot 1.03 in memory; see docs/60fps.md',
                  '60/livre alteram o eboot 1.03 na memória; ver docs/60fps.md'),
+    # -- rendering (upscaler, output/resolution coupling) --------------------------------------
+    'rendering': ('Rendering (restart required)', 'Renderização (reinício necessário)'),
+    'upscaler': ('Upscaler', 'Escalador'),
+    'output_res': ('Output resolution', 'Resolução de saída'),
+    'render_preset': ('Render preset', 'Predefinição de render'),
+    'source_res': ('Source resolution', 'Resolução de origem'),
+    'dlss_preset': ('DLSS model preset', 'Predefinição do modelo DLSS'),
+    'output_auto': ('Auto (window)', 'Auto (janela)'),
+    'preset_native': ('Native AA', 'AA nativo'),
+    'preset_quality': ('Quality', 'Qualidade'),
+    'preset_balanced': ('Balanced', 'Equilibrado'),
+    'preset_performance': ('Performance', 'Desempenho'),
+    'preset_ultra': ('Ultra Performance', 'Ultra desempenho'),
+    'preset_custom': ('Custom (free size)', 'Personalizado (livre)'),
+    'dlss_auto': ('Auto (NVIDIA default per mode)', 'Automático (padrão NVIDIA por modo)'),
+    'upscaler_off': ('Off (game as on PS4)', 'Desligado (jogo como no PS4)'),
+    'upscaler_taa': ('TAA (anti-aliasing, no upscale)', 'TAA (anti-aliasing, sem upscale)'),
+    'upscaler_fsr3': ('FSR 3.1', 'FSR 3.1'),
+    'upscaler_dlss': ('DLSS (NVIDIA RTX)', 'DLSS (NVIDIA RTX)'),
+    'render_hint': ('A preset derives the source (output ÷ scale, even sizes); typing a source '
+                    'switches to Custom (experimental TLG_RENDER_RES, incompatible with TAA). '
+                    'Letter preset only applies to DLSS.',
+                    'A predefinição deriva a origem (saída ÷ escala, tamanhos pares); digitar uma '
+                    'origem muda para Personalizado (TLG_RENDER_RES experimental, incompatível com '
+                    'TAA). A predefinição de letras vale só para o DLSS.'),
     'show_fps': ('Show FPS overlay at start (F10 toggles)', 'Mostrar overlay de FPS ao iniciar (F10 alterna)'),
     'vram': ('Texture cache budget (MB of VRAM)', 'Orçamento do cache de texturas (MB de VRAM)'),
     'vram_hint': ('6 GB card: 5600 · 8 GB: 7000 · 12 GB: 10500 · 16 GB: 14000 · 24 GB: 21500. This is video card memory (VRAM), not RAM; never above your card\'s VRAM.',
@@ -180,6 +205,22 @@ INI_DEFAULTS = {'smaa': '0', 'rcas': '1', 'cas': '0', 'color_adjust': '0', 'colo
 COLOR_RANGES = {'color_brightness': (-0.5, 0.5), 'color_contrast': (0.5, 1.5),
                 'color_saturation': (0.0, 2.0), 'color_gamma': (0.5, 2.0)}
 
+# Rendering section: upscaler and resolution, applied through tlg.ini (+ TLG_RENDER_RES for a
+# custom source) on the next launch. output_res 'auto' resolves to the window/desktop size.
+OUTPUT_CHOICES = ('auto', '1280x720', '1920x1080', '2560x1440', '3840x2160')
+PRESET_CHOICES = ('0', '1', '2', '3', '4')  # tlg_settings.h Preset: NativeAA..UltraPerformance
+DLSS_PRESET_CHOICES = ('auto', '10', '11', '12', '13')  # NVIDIA hint: default, J, K, L, M
+UPSCALER_CHOICES = ('off', 'fsr3', 'taa', 'dlss')  # fsr4 assets are not part of TLG's packages
+PRESET_SCALES = {'0': 1.0, '1': 1.5, '2': 1.7, '3': 2.0, '4': 3.0}
+RENDER_DEFAULTS = {'upscaler': 'off', 'output_res': 'auto', 'preset': '0',
+                   'source_res': '', 'dlss_preset': 'auto'}
+OUTPUT_LABELS = {'auto': 'output_auto'}
+PRESET_LABELS = {'0': 'preset_native', '1': 'preset_quality', '2': 'preset_balanced',
+                 '3': 'preset_performance', '4': 'preset_ultra', 'custom': 'preset_custom'}
+UPSCALER_LABELS = {'off': 'upscaler_off', 'fsr3': 'upscaler_fsr3',
+                   'taa': 'upscaler_taa', 'dlss': 'upscaler_dlss'}
+DLSS_PRESET_LABELS = {'auto': 'dlss_auto', '10': 'J', '11': 'K', '12': 'L', '13': 'M'}
+
 
 def art_path(settings, name):
     """Official art from the user's own dump (sce_sys); never shipped with the port."""
@@ -215,7 +256,10 @@ class Launcher:
         return system_is_portuguese() if choice == 'auto' else choice == 'pt_BR'
 
     def t(self, key, **fmt):
-        en, pt = TEXT[key]
+        try:
+            en, pt = TEXT[key]
+        except KeyError:  # a plain value used as a label (e.g. '2560x1440')
+            return key
         return (pt if self.pt() else en).format(**fmt)
 
     # -- window -----------------------------------------------------------------------------
@@ -314,7 +358,8 @@ class Launcher:
         spin.grid(row=3, column=1, sticky='w', padx=6, pady=(6, 0))
         spin.bind('<FocusOut>', lambda _: self.changed())
         ttk.Label(video, text=self.t('vram_hint'), foreground='#777', wraplength=360).grid(row=4, column=0, columnspan=2, sticky='w')
-        self.build_filters(video, 7)
+        self.build_rendering(video, 7)
+        self.build_filters(video, 15)
 
         log_frame = ttk.LabelFrame(main, text='Log', padding=4)
         log_frame.grid(row=2, column=2, sticky='nsew', **pad)
@@ -359,6 +404,158 @@ class Launcher:
                                     '-subsample', 4, 4)  # Tk command: same on every Python version
         except tk.TclError:
             self.banner = None
+
+    def build_rendering(self, parent, row):
+        """Upscaler and resolution coupling: a preset derives the source (output ÷ scale, even
+        sizes, as scene_resolution.h), typing a source flips the preset to Custom (which then
+        launches with the TLG_RENDER_RES compatibility path). Preset/output/upscaler/dlss_preset
+        live in tlg.ini (the game reads them); source_res lives in settings.json (launcher-only).
+        """
+        ttk.Separator(parent).grid(row=row, column=0, columnspan=2, sticky='ew', pady=(8, 4))
+        ttk.Label(parent, text=self.t('rendering'), foreground='#555', wraplength=360).grid(
+            row=row + 1, column=0, columnspan=2, sticky='w')
+        self.render_ini = dict(RENDER_DEFAULTS)
+        self.render_ini.update(
+            {k: v for k, v in tlg_run.read_ini(tlg_run.USER_DIR / 'tlg.ini').items()
+             if k in RENDER_DEFAULTS})
+        self._render_sync = False
+        custom = bool(str(self.settings.get('source_res') or ''))
+
+        ttk.Label(parent, text=self.t('upscaler')).grid(row=row + 2, column=0, sticky='w')
+        self.upscaler_box = ttk.Combobox(
+            parent, values=[self.t(UPSCALER_LABELS[k]) for k in UPSCALER_CHOICES],
+            state='readonly', width=28)
+        self.upscaler_box.current(self._choice(UPSCALER_CHOICES, self.render_ini['upscaler']))
+        self.upscaler_box.grid(row=row + 2, column=1, sticky='w', padx=6, pady=2)
+        self.upscaler_box.bind('<<ComboboxSelected>>', lambda _: self.render_changed())
+
+        ttk.Label(parent, text=self.t('output_res')).grid(row=row + 3, column=0, sticky='w')
+        self.output_box = ttk.Combobox(
+            parent, values=[self.t(OUTPUT_LABELS.get(k, k)) for k in OUTPUT_CHOICES],
+            state='readonly', width=28)
+        self.output_box.current(self._choice(OUTPUT_CHOICES, self.render_ini['output_res']))
+        self.output_box.grid(row=row + 3, column=1, sticky='w', padx=6, pady=2)
+        self.output_box.bind('<<ComboboxSelected>>', lambda _: self.render_changed())
+
+        ttk.Label(parent, text=self.t('render_preset')).grid(row=row + 4, column=0, sticky='w')
+        self.preset_choices = list(PRESET_CHOICES) + ['custom']
+        self.preset_box = ttk.Combobox(
+            parent, values=[self.t(PRESET_LABELS[k]) for k in self.preset_choices],
+            state='readonly', width=28)
+        self.preset_box.current(
+            self.preset_choices.index('custom') if custom
+            else self._choice(PRESET_CHOICES, self.render_ini['preset']))
+        self.preset_box.grid(row=row + 4, column=1, sticky='w', padx=6, pady=2)
+        self.preset_box.bind('<<ComboboxSelected>>', lambda _: self.render_changed())
+
+        ttk.Label(parent, text=self.t('source_res')).grid(row=row + 5, column=0, sticky='w')
+        self.source_var = tk.StringVar(value=str(self.settings.get('source_res') or ''))
+        self.source_entry = ttk.Entry(parent, textvariable=self.source_var, width=13)
+        self.source_entry.grid(row=row + 5, column=1, sticky='w', padx=6, pady=2)
+        self.source_var.trace_add('write', self.source_typed)
+
+        ttk.Label(parent, text=self.t('dlss_preset')).grid(row=row + 6, column=0, sticky='w')
+        self.dlss_preset_box = ttk.Combobox(
+            parent,
+            values=[self.t(DLSS_PRESET_LABELS[k]) if k == 'auto' else DLSS_PRESET_LABELS[k]
+                    for k in DLSS_PRESET_CHOICES],
+            state='readonly', width=28)
+        self.dlss_preset_box.current(
+            self._choice(DLSS_PRESET_CHOICES, self.render_ini['dlss_preset']))
+        self.dlss_preset_box.grid(row=row + 6, column=1, sticky='w', padx=6, pady=2)
+        self.dlss_preset_box.bind('<<ComboboxSelected>>', lambda _: self.render_changed())
+
+        ttk.Label(parent, text=self.t('render_hint'), foreground='#777', wraplength=360,
+                  justify='left').grid(row=row + 7, column=0, columnspan=2, sticky='w', pady=(2, 0))
+        self.refresh_source_display()
+
+    @staticmethod
+    def _choice(values, current):
+        try:
+            return values.index(current)
+        except ValueError:
+            return 0
+
+    def current_preset(self):
+        """The selected preset key, or 'custom' (a typed source)."""
+        return self.preset_choices[self.preset_box.current()]
+
+    @staticmethod
+    def parse_source(value):
+        """Normalized 'WxH' of a typed source, or '' while incomplete/invalid."""
+        text = str(value or '').strip().lower().replace('×', 'x').replace(' ', '')
+        width, _, height = text.partition('x')
+        if width.isdigit() and height.isdigit() and int(width) >= 64 and int(height) >= 64:
+            return f'{int(width)}x{int(height)}'
+        return '' if text else ''
+
+    @staticmethod
+    def _even(value, scale):
+        """Preset raster side: output ÷ scale rounded to even, as scene_resolution.h does."""
+        return max(2, int(value / scale / 2 + 0.5) * 2)
+
+    def derived_source(self):
+        """'(w, h)' the selected preset renders at, or None for Custom. 'auto' output shows the
+        screen size, which is what a borderless launch resolves to."""
+        preset = self.current_preset()
+        if preset == 'custom':
+            return None
+        output = OUTPUT_CHOICES[self.output_box.current()]
+        if output == 'auto':
+            width, height = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        else:
+            width, height = (int(v) for v in output.split('x'))
+        scale = PRESET_SCALES[preset]
+        return f'{self._even(width, scale)}x{self._even(height, scale)}'
+
+    def refresh_source_display(self):
+        """The source field: the typed custom value, else the preset's derived size (shown for
+        reference; only a custom value is persisted)."""
+        typed = str(self.settings.get('source_res') or '')
+        self._render_sync = True
+        try:
+            self.source_var.set(typed or (self.derived_source() or ''))
+        finally:
+            self._render_sync = False
+
+    def source_typed(self, *_):
+        """A source that differs from the preset's derivation switches the preset to Custom."""
+        if self._render_sync:
+            return
+        parsed = self.parse_source(self.source_var.get())
+        derived = self.derived_source()
+        if parsed and parsed != derived:
+            self.preset_box.current(self.preset_choices.index('custom'))
+        elif not parsed and self.current_preset() == 'custom':
+            self.preset_box.current(self._choice(PRESET_CHOICES, self.render_ini['preset']))
+        self.settings['source_res'] = parsed
+        tlg_run.save_settings(self.settings)
+        self.refresh_status()
+
+    def render_changed(self):
+        """Writes the Rendering section: the game's keys to tlg.ini, source_res/output choice to
+        settings.json. A preset pick clears a custom source (the preset becomes the source again)
+        and is remembered as the preset to restore; 'auto' output resolves to a concrete table
+        entry at play()."""
+        preset = self.current_preset()
+        if preset != 'custom':
+            self.settings['source_res'] = ''
+            self.render_ini['preset'] = preset
+            values = {'preset': preset}
+        else:
+            values = {'preset': self.render_ini['preset']}
+        values['upscaler'] = UPSCALER_CHOICES[self.upscaler_box.current()]
+        values['dlss_preset'] = DLSS_PRESET_CHOICES[self.dlss_preset_box.current()]
+        output = OUTPUT_CHOICES[self.output_box.current()]
+        self.render_ini['output_res'] = output
+        self.settings['output_choice'] = output
+        if output != 'auto':
+            values['output_res'] = output
+        tlg_run.USER_DIR.mkdir(parents=True, exist_ok=True)
+        tlg_run.update_ini(tlg_run.USER_DIR / 'tlg.ini', values)
+        tlg_run.save_settings(self.settings)
+        self.refresh_source_display()
+        self.refresh_status()
 
     def build_filters(self, parent, row):
         """SMAA, sharpening and color adjustments, read from and written to tlg.ini right away."""
@@ -667,15 +864,39 @@ class Launcher:
             messagebox.showinfo(self.t('title'), self.t('already'))
             return
         self.changed()
+        self.launch_env = self.play_env()
         self.append(self.t('preparing'))
         self.play_button.configure(state='disabled')
         self.cache_button.configure(state='disabled')
         threading.Thread(target=self.run_game, daemon=True).start()
 
+    def play_env(self):
+        """Resolution env for this launch: 'auto' output resolves to the nearest table entry of
+        the current screen, a custom source becomes the experimental TLG_RENDER_RES session.
+        The upscaler goes through the env too (build_env defaults TLG_UPSCALER to off, which
+        would otherwise override the ini); only when the ini has the key — an untouched
+        section keeps the old shell-env behaviour."""
+        env = {}
+        choice = self.settings.get('output_choice', 'auto')
+        if choice == 'auto':
+            width, height = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+            entries = sorted(tuple(int(v) for v in c.split('x')) for c in OUTPUT_CHOICES
+                             if c != 'auto')
+            match = min(entries, key=lambda e: (abs(e[0] - width), abs(e[1] - height)))
+            env['TLG_OUTPUT_RES'] = f'{match[0]}x{match[1]}'
+        else:
+            env['TLG_OUTPUT_RES'] = choice
+        source = self.parse_source(self.settings.get('source_res'))
+        if source:
+            env['TLG_RENDER_RES'] = source
+        if 'upscaler' in tlg_run.read_ini(tlg_run.USER_DIR / 'tlg.ini'):
+            env['TLG_UPSCALER'] = tlg_run.read_ini(tlg_run.USER_DIR / 'tlg.ini')['upscaler']
+        return env
+
     def run_game(self):
         try:
             tlg_run.prepare(self.settings, log=lambda line: self.lines.put(line))
-            self.process, log = tlg_run.launch(self.settings)
+            self.process, log = tlg_run.launch(self.settings, extra_env=getattr(self, 'launch_env', None))
         except Exception as error:  # shown to the user, the launcher keeps running
             self.lines.put(('error', str(error)))
             return

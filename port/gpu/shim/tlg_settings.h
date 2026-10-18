@@ -108,6 +108,9 @@ struct Values {
     /// DLSS (tlg_dlss.dll, NVIDIA RTX) is ready, or why not (null before the device exists).
     std::atomic<bool> dlss_supported{false};
     std::atomic<const char*> dlss_problem{nullptr};
+    /// DLSS letter render preset hint: 0 = auto (NVIDIA's per-mode default), else the
+    /// NVSDK_NGX_DLSS_Hint_Render_Preset value (e.g. 10..13 = J..M). Only sent when DLSS runs.
+    std::atomic<int> dlss_preset{0};
 
     // Mouse and keyboard (src/runtime_pad.c through tlggpu_input_settings, src/mouse_stick.h):
     // the mouse turns the camera (right stick). Live from the menu.

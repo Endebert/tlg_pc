@@ -11,6 +11,7 @@
 #include <string_view>
 
 #include "video_core/renderer_vulkan/vk_dlss.h"
+#include "tlg_settings.h"
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -289,7 +290,7 @@ bool Dlss::CreateFeature(vk::CommandBuffer command, const FeatureDesc& desc) {
     impl->feature.reset();
     const TlgDlssFeature feature{desc.input_width,  desc.input_height, desc.output_width,
                                 desc.output_height, desc.quality,      0,
-                                0,                  desc.hdr ? 1 : 0};
+                                uint32_t(TlgSettings::Get().dlss_preset.load()), desc.hdr ? 1 : 0};
     if (!impl->api->CreateFeature(command, &feature)) {
         return false;
     }

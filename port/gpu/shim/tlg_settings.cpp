@@ -75,6 +75,8 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         }
     } else if (key == "preset") {
         v.preset = std::clamp(i, 0, PresetCount - 1);
+    } else if (key == "dlss_preset") {
+        v.dlss_preset = value == "auto" ? 0 : std::clamp(i, 0, 15);
     } else if (key == "sharpen") {
         v.sharpen = i != 0;
     } else if (key == "sharpness") {
@@ -229,7 +231,8 @@ void Load() {
         {"TLG_FSR_SHARPNESS", "sharpness"},        {"TLG_JITTER", "jitter"},
         {"TLG_REACTIVE", "reactive"},              {"TLG_REACTIVE_SCALE", "reactive_scale"},
         {"TLG_REACTIVE_THRESHOLD", "reactive_threshold"}, {"TLG_REACTIVE_MAX", "reactive_max"},
-        {"TLG_UPSCALE_PRESET", "preset"},            {"TLG_OBJECT_MOTION", "object_motion"},
+        {"TLG_UPSCALE_PRESET", "preset"},            {"TLG_DLSS_PRESET", "dlss_preset"},
+        {"TLG_OBJECT_MOTION", "object_motion"},
         {"TLG_ASYNC_SHADERS", "async_shaders"},      {"TLG_DEFERRED_READBACK", "deferred_readback"},
         {"TLG_STALE_READBACK", "stale_readback"},     {"TLG_FSR1", "fsr1"},
         {"TLG_RCAS", "rcas"},                        {"TLG_FRAMES_AHEAD", "frames_queued"},
@@ -333,6 +336,7 @@ void Save() {
                  v.debug_view.load(), int(v.show_fps.load()),
                  int(v.fsr4_auto_exposure.load()), int(v.fsr4_invert_jitter.load()));
     std::fprintf(file, "output_res=%dx%d\n", OutputWidths[v.output_res], OutputHeights[v.output_res]);
+    std::fprintf(file, "dlss_preset=%d\n", v.dlss_preset.load());
     std::fprintf(file, "red_orb_multiplier=%.3f\n", v.red_orb_multiplier.load());
     std::fprintf(file, "damage_dealt=%.3f\n", v.damage_dealt.load());
     std::fprintf(file, "damage_taken=%.3f\n", v.damage_taken.load());
