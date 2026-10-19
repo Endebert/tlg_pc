@@ -60,12 +60,16 @@ is a NixOS fallback whose header still names the old `native_probe/` path.
 
 Run the game. Every unattended run MUST set `TLG_OFFSCREEN=1`: it forces the hidden X11/XWayland
 window so nothing appears on the desktop and focus is never stolen from the player's session. It
-is ignored with a warning when `DISPLAY` is unset. Omitting it puts a window on screen.
+is ignored with a warning when `DISPLAY` is unset. Omitting it puts a window on screen. Add
+`TLG_AUDIO=none` for a muted run (`runtime_audio.c` opens no audio device then) so agent-driven
+runs never make noise:
 
-    TLG_OFFSCREEN=1 ./run_tlg.sh <seconds>
+    TLG_OFFSCREEN=1 TLG_AUDIO=none ./run_tlg.sh <seconds>
 
 `TLG_FRAME_LOG=<path>` writes a per-frame CSV of `time_ms,frame_ms,draws`. `TLG_SKIP_INTRO=0`
-disables the boot-logo skip, which is on by default; an empty value counts as unset. Logs land in
+disables the boot-logo skip, which is on by default; an empty value counts as unset. The same
+pattern holds for the NULL-table guard: `TLG_CONTAINER_GUARD=0` turns `container_guard` off, and
+it is on in every frame-rate mode, 30 included. Logs land in
 `port/out/logs/run-<timestamp>.log`, with `port/out/last_run.log` pointing at the newest.
 
 ## Testing and QA
@@ -73,7 +77,7 @@ disables the boot-logo skip, which is on by default; an empty value counts as un
 Three independent tiers, with no ctest and no aggregate target.
 
 1. Python: `cd port && python3 -m unittest discover -s tests`. The working directory must be
-   `port/`. Baseline is 184 tests, 7 errors, 59 skips.
+   `port/`. Baseline is 188 tests, 7 errors, 59 skips.
 2. C: `bash build.sh --test` compiles and immediately runs 18 binaries into `port/out/`.
 3. C++: `ninja -C out/gpu <name>-test && out/gpu/<name>-test`. Targets are `EXCLUDE_FROM_ALL` in
    `port/gpu/CMakeLists.txt`; `cheat-hook-test` is the only one that is not.
@@ -137,6 +141,13 @@ contract every `runtime_*.c` module implements. `port/gpu/tlggpu.h` is the publi
 exposes `parse_self`. `port/launcher/tlg_run.py` is the run core shared by the CLI and the GUI.
 `port/user/tlg.ini` holds the in-game settings.
 
+Save backups live in `port/user/savedata_backups/` (`port/scripts/save_backup.py`, newest 10 kept;
+the gow3 `port/run.py` pipeline makes one before every start, on the TLG path they are made by
+hand). The `pins` file there lists backups exempt from that rotation — both are gitignored
+machine-local state, so a fresh clone has neither; `20261018-201112` is pinned here as the
+performance baseline — the save state to restore before measuring optimizations, so benchmarks
+start from the same spot.
+
 ## Crash triage
 
 Exit 139 is SIGSEGV. `fault()` in `port/src/probe.c` (line 312) classifies it: `Guest fault` means
@@ -151,10 +162,15 @@ this file. Extract the ELF with `prepare.parse_self`; the text segment maps file
 vaddr `0`, so guest offsets are vaddrs. The eboot is stripped, so disassemble with `llvm-objdump -d`
 and expect no symbols.
 
-Open: a guest NULL dereference at `0x28c193` (`movq (%rcx,%rax,8),%rax`, with the object's `+0x28`
-table null) closes the game after roughly four minutes of play. It is pre-existing — upstream
-issue #60 carries the identical fault from 2026-10-16, before `skip_intro` existed. Root cause not
-yet found.
+The guest NULL dereference at `0x28c193` (`movq (%rcx,%rax,8),%rax`, object's `+0x28` table
+null) after ~4 minutes of play — upstream issue #60 — root-caused to both guards in the consumer
+at `0x28c12f`/`0x28c150` testing the record count `+0x50` and never the pointer-table count
+`+0x30` they dereference. Fixed by the `container_guard` patch (`port/scripts/tlg_patches.py`,
+displacement byte at image `0x128c150`, on by default in every mode; `TLG_CONTAINER_GUARD=0`
+drops it). Evidence: replay with the guard off faults at `0x28c193` (`run-20261018-202937.log`),
+replay with it on reaches the time limit without faulting (`run-20261018-204732.log`,
+`run-20261018-205135.log`); still worth watching in normal play. `scripts/crash_repro.sh`
+reproduces it from the recorded input in `port/out/repro.rec`.
 
 ## Remotes and commits
 
