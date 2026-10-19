@@ -10,8 +10,9 @@ loader (probe.c apply_patches) applies the file after relocation. Image offsets 
 virtual addresses; the Ghidra addresses in the comments (base 0x1000000) are offset + 0x1000000.
 Research: docs/60fps.md.
 
-30 with no mods enabled writes only the boot logo skip; TLG_SKIP_INTRO=0 writes an empty patch
-file and the game runs exactly as on PS4.
+30 with no mods enabled writes only the boot logo skip and the container_guard NULL-table fix;
+TLG_SKIP_INTRO=0 TLG_CONTAINER_GUARD=0 writes an empty patch file and the game runs exactly as on
+PS4.
 
 Mods/cheats (--mods-dir/--mods-config, mod_patches.py): shadPS4/GoldHEN cheat XML files the
 player drops in the mods folder. Nothing in there has any effect until it is enabled (the
@@ -93,6 +94,19 @@ PATCHES = {
          bytes.fromhex('c784244407000000000000'), 'logo entry 3 (Japan Studio) enabled -> 0'),
         (0x1231f16, bytes.fromhex('c784240c07000001000000'),
          bytes.fromhex('c784240c07000000000000'), 'conditional enable of logo entry 1 -> 0'),
+    ],
+    # The consumer at 0x28c100 walks the 192-byte record table (+0x48, count +0x50) and looks
+    # each record up in a parallel pointer table at +0x28 (count +0x30): `mov rax,[rcx+rax*8]`
+    # at 0x28c193. Its two guards both test the record count, never the table it dereferences,
+    # so records present with an empty table faults on NULL (exit 139, upstream #60). Guard 1
+    # (0x128c130) must keep testing +0x50: an object with no records yet legitimately returns
+    # there, and retargeting it lets a table-only object fall through and fault on the NULL
+    # record table at 0x28c18b instead. Guard 2 runs after the setup call and immediately
+    # before the loop, so moving it to +0x30 adds the missing table check without disturbing
+    # the record check. One displacement byte. On in every mode; TLG_CONTAINER_GUARD=0 turns it off.
+    'container_guard': [
+        (0x128c150, bytes.fromhex('41837c245000'), bytes.fromhex('41837c243000'),
+         'guard 2 checks table count +0x30 before the loop, not record count +0x50'),
     ],
 }
 
@@ -265,6 +279,11 @@ def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None, resolution
     eboot = None
     # TLG_FPS_PATCHES="a,b" (measurements): these patches instead of the mode's own.
     names = [n for n in os.environ.get('TLG_FPS_PATCHES', '').split(',') if n in PATCHES] or MODES[mode]
+    # The NULL-table guard (exit 139, upstream #60) runs in every mode including 30; it is a
+    # correctness fix, not a frame rate choice. TLG_CONTAINER_GUARD=0 turns it off the way
+    # TLG_SKIP_INTRO=0 turns the boot logo skip off.
+    if os.environ.get('TLG_CONTAINER_GUARD', '1') != '0' and 'container_guard' not in names:
+        names = names + ['container_guard']
     if names or size or skip:
         first = ('Frame rate' if names else 'Skip intro' if skip else 'Resolution')  # who needs the eboot for a message
         try:

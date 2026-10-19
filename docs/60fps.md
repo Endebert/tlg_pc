@@ -1,7 +1,8 @@
 # 60 FPS / FPS livre (issue #5)
 
 Estado em 13/10/2026: **experimental, desligado por padrão.** O modo 30 FPS é o jogo como no PS4,
-sem nenhum patch.
+com a única exceção da correção `container_guard` (ver ao final), que é aplicada em todos os
+modos porque conserta um crash.
 
 ## Como ligar
 
@@ -18,7 +19,11 @@ sem nenhum patch.
 - **Livre:** vblank de 480 Hz (`TLG_VBLANK_HZ=0`), e o quadro sai assim que fica pronto. O teto é o
   "Limite de FPS" do overlay; em "Sem limite", vale a taxa do monitor, até 120 FPS. Com o VSync da
   janela ligado, o monitor (60 Hz aqui) limita a 60.
-- `TLG_FPS_PATCHES=a,b` (só para medições) troca a lista de patches do modo.
+- `TLG_FPS_PATCHES=a,b` (só para medições) troca a lista de patches do modo; **a guarda continua
+  aplicada** — só `TLG_CONTAINER_GUARD=0` a remove.
+- `container_guard` (a correção do NULL em `0x28c193`, exit 139 / upstream #60) é aplicado em
+  **todos** os modos, inclusive 30 FPS: é correção, não escolha de taxa. `TLG_CONTAINER_GUARD=0`
+  desliga (mesma forma do `TLG_SKIP_INTRO=0`), e `TLG_FPS_PATCHES=a,b` substitui a lista do modo.
 
 Código: `port/scripts/tlg_patches.py` (tabela e verificação), `port/launcher/tlg_run.py` (opção,
 `--patches`, `TLG_ENGINE_FPS`), `driver.cpp` (limitador), `tlg_overlay.cpp` (texto do limite).

@@ -70,18 +70,22 @@ def writes_of(blob):
 
 
 class FrameRatePatchTests(unittest.TestCase):
-    def prepare(self, eboot, mode):
+    def prepare(self, eboot, mode, env=None):
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, 'eboot.bin').write_bytes(eboot)
-            applied, lines = t.prepare(tmp, tmp, mode)
+            with mock.patch.dict(os.environ):
+                os.environ.pop('TLG_FPS_PATCHES', None)
+                os.environ.pop('TLG_CONTAINER_GUARD', None)
+                os.environ.update(env or {})
+                applied, lines = t.prepare(tmp, tmp, mode)
             return applied, lines, Path(tmp, 'patches.bin').read_bytes()
 
     def test_self_dump_of_103_gets_the_patches(self):
         # #40: a SELF dump of 1.03 has another sha256 than the plain dump, but the same code.
-        applied, lines, blob = self.prepare(self_dump(text_with(t.MODES['60'])), '60')
+        applied, lines, blob = self.prepare(self_dump(text_with(t.MODES['60'] + ['container_guard'])), '60')
         self.assertEqual(applied, '60')
-        self.assertIn('Frame rate: 60 FPS mode, 4 patch writes', lines)
-        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 4))
+        self.assertIn('Frame rate: 60 FPS mode, 5 patch writes', lines)
+        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 5))
 
     def test_self_dump_of_another_build_stays_at_30(self):
         applied, lines, blob = self.prepare(self_dump(text_with(t.MODES['unlocked'], expected=False)), 'unlocked')
@@ -102,6 +106,24 @@ class FrameRatePatchTests(unittest.TestCase):
     def test_30_writes_an_empty_patch_file(self):
         applied, lines, blob = self.prepare(b'', '30')
         self.assertEqual((applied, struct.unpack_from('<8sQQ', blob)), ('30', (b'G3PATCH2', 0, 0)))
+
+    def test_container_guard_runs_in_every_mode_by_default(self):
+        # The NULL-table guard (exit 139, upstream #60) is a correctness fix, not a frame rate
+        # choice: it applies even in the PS4-faithful 30 mode.
+        for mode in ('30', '60', 'unlocked'):
+            names = t.MODES[mode] + ['container_guard']
+            applied, lines, blob = self.prepare(self_dump(text_with(names)), mode)
+            self.assertEqual(applied, mode)
+            expected = sum(len(t.PATCHES[name]) for name in names)
+            self.assertEqual(len(writes_of(blob)), expected)
+            self.assertTrue(any('container_guard: 0x128c150' in line for line in lines), mode)
+
+    def test_container_guard_env_zero_turns_it_off(self):
+        applied, lines, blob = self.prepare(self_dump(text_with(t.MODES['60'] + ['container_guard'])), '60',
+                                            env={'TLG_CONTAINER_GUARD': '0'})
+        self.assertEqual(applied, '60')
+        self.assertEqual(len(writes_of(blob)), sum(len(t.PATCHES[name]) for name in t.MODES['60']))
+        self.assertFalse(any('container_guard' in line for line in lines))
 
 
 class SkipIntroTests(unittest.TestCase):
@@ -154,7 +176,10 @@ class ResolutionPatchTests(unittest.TestCase):
     def prepare(self, eboot, resolution='native', mode='30'):
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, 'eboot.bin').write_bytes(eboot)
-            applied, lines = t.prepare(tmp, tmp, mode, resolution=resolution)
+            with mock.patch.dict(os.environ):
+                os.environ.pop('TLG_FPS_PATCHES', None)
+                os.environ.pop('TLG_CONTAINER_GUARD', None)
+                applied, lines = t.prepare(tmp, tmp, mode, resolution=resolution)
             return applied, lines, Path(tmp, 'patches.bin').read_bytes()
 
     def build(self, resolution, table=True):
@@ -202,12 +227,13 @@ class ResolutionPatchTests(unittest.TestCase):
 
     def test_resolution_with_frame_rate_writes_both(self):
         size = t.parse_resolution('2560x1440')
-        text = text_with({name: t.PATCHES[name] for name in t.MODES['60']},
+        names = t.MODES['60'] + ['container_guard']
+        text = text_with({name: t.PATCHES[name] for name in names},
                          t.resolution_patches(*size))
         _, lines, blob = self.prepare(self_dump(text, mode_table()), '2560x1440', mode='60')
-        # 60 FPS: flip_rate (1 entry) + dt_snap (3 entries); resolution: table + NOPs.
-        self.assertEqual(len(writes_of(blob)), 6)
-        self.assertIn('Frame rate: 60 FPS mode, 4 patch writes', lines)
+        # 60 FPS: flip_rate (1 entry) + dt_snap (3 entries) + container_guard (1); resolution: table + NOPs.
+        self.assertEqual(len(writes_of(blob)), 7)
+        self.assertIn('Frame rate: 60 FPS mode, 5 patch writes', lines)
         self.assertIn('Resolution: 2560x1440, 2 patch writes', lines)
 
 
