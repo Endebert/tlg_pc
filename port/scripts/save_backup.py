@@ -4,13 +4,18 @@
 
 run.py makes one before every start; the launcher lists them and restores one. A restore
 first backs up the current saves, so it can always be undone.
+
+pin() marks a backup the rotation keeps for good, recording why: the pins file sits next to
+the backup folders, so list_backups() never returns it.
 """
 import datetime
 from pathlib import Path
+import os
 import shutil
 
 KEEP = 10
 STAMP = '%Y%m%d-%H%M%S'
+PINS = 'pins'
 
 
 def backups_dir(user_dir):
@@ -27,9 +32,61 @@ def _has_saves(savedata):
     return savedata.is_dir() and any(p.is_file() for p in savedata.rglob('*'))
 
 
+def pins_path(user_dir):
+    return backups_dir(user_dir) / PINS
+
+
+def pinned(user_dir):
+    """Pinned backup names mapped to the reason they were pinned."""
+    path = pins_path(user_dir)
+    if not path.is_file():
+        return {}
+    pins = {}
+    for line in path.read_text(encoding='utf-8').splitlines():
+        name, _, reason = line.partition('\t')
+        if name:
+            pins[name] = reason.strip()
+    return pins
+
+
+def is_pinned(user_dir, name):
+    return name in pinned(user_dir)
+
+
+def pin(user_dir, name, reason=''):
+    """Marks a backup the rotation keeps for good; raises ValueError for an unknown name or a
+    reason containing a tab or newline (the pins file is line- and tab-separated)."""
+    if name not in list_backups(user_dir):
+        raise ValueError(f'No save backup named {name!r}')
+    reason = reason.strip()
+    if any(char in reason for char in '\t\n'):
+        raise ValueError('A pin reason cannot contain a tab or newline')
+    pins = pinned(user_dir)
+    pins[name] = reason
+    _write_pins(user_dir, pins)
+
+
+def unpin(user_dir, name):
+    """Forgets the pin; the backup rotates out with the rest."""
+    pins = pinned(user_dir)
+    if pins.pop(name, None) is not None:
+        _write_pins(user_dir, pins)
+
+
+def _write_pins(user_dir, pins):
+    path = pins_path(user_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix('.tmp')          # a crash mid-write must not lose the pins
+    tmp.write_text(''.join(f'{name}\t{reason}\n' for name, reason in sorted(pins.items())),
+                   encoding='utf-8')
+    os.replace(tmp, path)
+
+
 def _prune(user_dir, keep=KEEP):
+    keepers = set(pinned(user_dir))
     for name in list_backups(user_dir)[keep:]:
-        shutil.rmtree(backups_dir(user_dir) / name, ignore_errors=True)
+        if name not in keepers:
+            shutil.rmtree(backups_dir(user_dir) / name, ignore_errors=True)
 
 
 def _copy(user_dir, now):

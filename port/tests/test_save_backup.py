@@ -81,6 +81,33 @@ class SaveBackupTest(unittest.TestCase):
                 save_backup.restore(self.user, name, now=self.tick())
         self.assertEqual(self.save.read_text(), 'v')
 
+    def test_pinned_backup_survives_rotation(self):
+        write(self.save, 'v')
+        first = save_backup.backup(self.user, now=self.tick())
+        save_backup.pin(self.user, first.name, 'perf baseline')
+        for _ in range(12):
+            save_backup.backup(self.user, now=self.tick())
+        kept = save_backup.list_backups(self.user)
+        self.assertIn(first.name, kept)             # the pinned oldest outlives the rotation
+        self.assertEqual(len(kept), save_backup.KEEP + 1)
+        self.assertTrue(first.is_dir())
+
+        save_backup.unpin(self.user, first.name)
+        save_backup.backup(self.user, now=self.tick())
+        self.assertNotIn(first.name, save_backup.list_backups(self.user))
+
+    def test_pin_records_reason_and_rejects_unknown_names(self):
+        write(self.save, 'v')
+        made = save_backup.backup(self.user, now=self.tick())
+        with self.assertRaises(ValueError):
+            save_backup.pin(self.user, 'missing', 'nope')
+        save_backup.pin(self.user, made.name, '  fixed state to benchmark from  ')
+        self.assertEqual(save_backup.pinned(self.user), {made.name: 'fixed state to benchmark from'})
+        self.assertTrue(save_backup.is_pinned(self.user, made.name))
+        self.assertFalse(save_backup.is_pinned(self.user, 'missing'))
+        with self.assertRaises(ValueError):                      # a tab/newline would corrupt the pins file
+            save_backup.pin(self.user, made.name, 'bad\treason')
+
 
 if __name__ == '__main__':
     unittest.main()
