@@ -122,6 +122,14 @@ DIAGNOSTICS = [
         ('Stale readbacks', 'Leituras da GPU com um quadro de atraso'),
         ('CPU reads see the last published GPU version instead of waiting (needs deferred readbacks).',
          'A CPU lê a última versão publicada pela GPU em vez de esperar (precisa das leituras adiadas).'), risky=True),
+    _ab('direct_memory_access', 'TLG_DIRECT_MEMORY_ACCESS', False, False,
+        ('Direct memory access (shaders)', 'Acesso direto à memória (shaders)'),
+        ('Shaders read constants straight from the game\'s memory when their address is computed: '
+         'fixes some broken scenes, but the game runs slower. Its shaders are compiled again, in a cache '
+         'of their own.',
+         'Os shaders leem constantes direto da memória do jogo quando o endereço é calculado: corrige '
+         'algumas cenas com problema, mas o jogo fica mais lento. Os shaders dela são compilados de novo, '
+         'num cache próprio.'), risky=True),
     _ab('readback_linear', 'TLG_READBACK_LINEAR', True, False,
         ('Read small render targets back', 'Ler de volta render targets pequenos'),
         ('Copies small and linear render targets back to the CPU: the game\'s auto exposure needs it (#38, #40).',
