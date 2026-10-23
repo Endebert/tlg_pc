@@ -40,7 +40,7 @@ host at address 0. The user region is `USER_MIN 0x1000000000` to `USER_MAX 0xfc0
 | `port/src/` | loader, runtime, signal handling, ISA rewrite |
 | `port/gpu/` | GPU library: `shim/` C API glue, `shadps4/` vendored video core, `CMakeLists.txt` |
 | `port/scripts/` | Python run as subprocesses: `prepare.py`, `link_modules.py`, `tlg_patches.py`, `isa_rewrite.py` |
-| `port/launcher/` | `tlg_run.py` run core, `tlg_launcher.py` Tk GUI, `shader_cache.py` |
+| `port/launcher/` | `tlg_run.py` run core, `tlg_launcher_qt.py` Qt GUI (the default), `tlg_launcher.py` Tk GUI, `shader_cache.py` |
 | `port/tests/` | Python tests plus `paths.py`, which puts `port/scripts` on `sys.path` |
 | `port/tools/` | dev-loop helpers: `restart.sh`, `soak.sh`, `ab.sh`, FSR4 toolchain |
 | `port/packaging/` | Linux and Windows dist scripts |
@@ -77,8 +77,9 @@ it is on in every frame-rate mode, 30 included. Logs land in
 Three independent tiers, with no ctest and no aggregate target.
 
 1. Python: `cd port && python3 -m unittest discover -s tests`. The working directory must be
-   `port/`. Baseline is 188 tests, 7 errors, 59 skips.
-2. C: `bash build.sh --test` compiles and immediately runs 18 binaries into `port/out/`.
+   `port/`. Baseline is 424 tests, 5 failures, 7 errors, 55 skips (52 once `out/content-test` exists).
+2. C: `bash build.sh --test` compiles and immediately runs 18 binaries into `port/out/` — but it
+   aborts at `sema-test`, the sixth, so only the first six get built (see below).
 3. C++: `ninja -C out/gpu <name>-test && out/gpu/<name>-test`. Targets are `EXCLUDE_FROM_ALL` in
    `port/gpu/CMakeLists.txt`; `cheat-hook-test` is the only one that is not.
 
@@ -91,9 +92,18 @@ imports `tlg_assets`, neither of which exists. Five are `FileNotFoundError` from
 `test_patches.py`, whose `TLG` is `port/patches/God_of_War_III_Remastered.xml`, a file that is not
 in the repository. Compare against this baseline instead of chasing them.
 
-Of the 59 skips, 14 are `test_content`, `test_runtime` and `test_sema` waiting on
-`out/{content,runtime,sema}-test`, which only `build.sh --test` produces — run that first to
-exercise them. Others gate on `iced-x86` being installed or on `TLG_GAME` pointing at a real eboot.
+The 5 Python failures are pre-existing too. Four are `test_sema`, which only runs `out/sema-test`;
+that binary aborts at `tests/test_sema.c:34`, `assert(!runtime_resolve("188x57JYp0g#libkernel",0))`,
+which contradicts the successful resolve of the same NID two lines above — the second argument is
+`is_data`, not a module index, so it resolves. Wrong since the initial import, and because
+`build.sh` runs each binary as it builds, it kills the C tier at step 6 of 18. The fifth is
+`test_qt_launcher.test_every_key_the_screens_ask_for_exists`, which needs `tkinter`;
+`libtk8.6.so` is not installed on this machine.
+
+Of the 55 skips (52 once `out/content-test` exists), 44 wait on `iced-x86`, 6 are Windows-only
+behaviour, 1 needs `TLG_GAME` pointing at a real eboot and 1 needs Tk. The 3 `test_content` cases
+wait on `out/content-test`, which `build.sh --test` never reaches — build it by hand or tolerate
+the `sema-test` abort to exercise them.
 
 Conventions for a new test: `port/tests/test_*.py`, a `unittest.TestCase` named `*Tests`, methods
 named `test_*`, starting with `from paths import ROOT`. Never depend on real game files — synthesize
