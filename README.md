@@ -35,6 +35,7 @@ Por **HayatoG** · YouTube [@hayatog-dev](https://www.youtube.com/@hayatog-dev) 
 - **60 FPS e FPS livre (experimental):** launcher → Vídeo → "Taxa de quadros (experimental)", ou `TLG_FPS=30|60|unlocked`. O padrão continua 30 FPS, como no PS4. Detalhes em [`docs/60fps.md`](docs/60fps.md) ([#5](https://github.com/HayatoG/tlg_pc/issues/5)).
 - **Pular os logotipos de inicialização:** os avisos e logotipos que levam ~38 s até o menu são pulados por um patch no eboot (ligado por padrão; launcher → Jogo, ou `TLG_SKIP_INTRO=0` para o comportamento do PS4).
 - **Filtros de imagem:** anti-aliasing SMAA, nitidez RCAS (FSR 1) ou CAS (AMD) e ajustes de cor (brilho, contraste, saturação, gama), no launcher e ao vivo no menu do jogo (Insert → Imagem) ([#2](https://github.com/HayatoG/tlg_pc/issues/2)).
+- **Ampliação e resolução:** launcher → Gráficos → Renderização escolhe o upscaler (DLSS, FSR 3.1, TAA ou desligado), a resolução de saída (auto ou 720p–4K, aplicada como patch na abertura) e a predefinição de render (AA nativo a Ultra Performance), mais a predefinição do modelo DLSS. Vale na próxima partida; o menu do jogo não oferece upscaler nem predefinição de render.
 - **Mouse e teclado:** o mouse gira a câmera (sensibilidade e eixo Y invertido no launcher) e as teclas e botões do mouse podem ser remapeados ([#8](https://github.com/HayatoG/tlg_pc/issues/8)).
 - **Sensor de movimento:** o giroscópio do DualShock 4/DualSense funciona direto. Em controles sem sensor, um toque em Share (ou L3+R3) liga o "modo sensor": o analógico esquerdo inclina o controle e X/A sacode. No teclado, T/G inclinam e Y sacode.
 - **Brilho e luzes como no PS4:** a exposição automática do jogo agora lê o valor certo da GPU, e as cenas ao ar livre não estouram mais em branco (`TLG_READBACK_LINEAR=1`, ligado por padrão; `0` volta ao comportamento antigo) ([#38](https://github.com/HayatoG/tlg_pc/issues/38), [#40](https://github.com/HayatoG/tlg_pc/issues/40)).
@@ -119,7 +120,7 @@ O passo a passo completo, com os problemas mais comuns, está em [`README-player
 ```bash
 git clone --recursive https://github.com/HayatoG/tlg_pc.git && cd tlg_pc
 cd port && TLG_LTO=OFF bash build.sh   # Linux: SDL3, Vulkan, FFmpeg, Boost, fmt, Zydis, glslang
-cd .. && ./tlg_launcher.sh             # ou ./run_tlg.sh pelo terminal
+cd .. && ./tlg_launcher_qt.sh         # launcher Qt; ./tlg_launcher.sh (Tk) ou ./run_tlg.sh pelo terminal
 ```
 
 No Windows, o build roda no MSYS2 CLANG64 ([`port/packaging/windows/README.md`](port/packaging/windows/README.md)). O workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) mostra o processo completo nas duas plataformas.
@@ -163,6 +164,7 @@ The screenshots and the performance chart are at the top of this page.
 - **60 FPS and unlocked frame rate (experimental):** launcher → Video → "Frame rate (experimental)", or `TLG_FPS=30|60|unlocked`. The default is still 30 FPS, as on PS4. Details in [`docs/60fps.md`](docs/60fps.md) (in Portuguese, [#5](https://github.com/HayatoG/tlg_pc/issues/5)).
 - **Skip the startup logos:** the warnings and logos that take about 38 s to reach the menu are skipped by an eboot patch (on by default; launcher → Game, or `TLG_SKIP_INTRO=0` for the PS4 behaviour).
 - **Image filters:** SMAA anti-aliasing, RCAS (FSR 1) or CAS (AMD) sharpening and colour adjustments (brightness, contrast, saturation, gamma), in the launcher and live in the in-game menu (Insert → Image) ([#2](https://github.com/HayatoG/tlg_pc/issues/2)).
+- **Upscaling and resolution:** launcher → Graphics → Rendering picks the upscaler (DLSS, FSR 3.1, TAA or off), the output resolution (auto or 720p–4K, applied as a patch at start) and the render preset (Native AA to Ultra Performance), plus the DLSS model preset. Applies on the next start; the in-game menu offers neither the upscaler nor the render preset.
 - **Mouse and keyboard:** the mouse turns the camera (sensitivity and inverted Y in the launcher), and keys and mouse buttons can be remapped ([#8](https://github.com/HayatoG/tlg_pc/issues/8)).
 - **Motion sensor:** the DualShock 4/DualSense gyro works as is. On controllers without one, a tap on Share (or L3+R3) toggles "sensor mode": the left stick tilts the controller and cross/A shakes it. On the keyboard, T/G tilt and Y shakes.
 - **PS4-like brightness and lighting:** the game's auto exposure now reads the right value from the GPU, so outdoor scenes no longer blow out to white (`TLG_READBACK_LINEAR=1`, on by default; `0` restores the old behaviour) ([#38](https://github.com/HayatoG/tlg_pc/issues/38), [#40](https://github.com/HayatoG/tlg_pc/issues/40)).
@@ -243,7 +245,7 @@ The full guide, with common problems, is in [`README-player.md`](port/packaging/
 ```bash
 git clone --recursive https://github.com/HayatoG/tlg_pc.git && cd tlg_pc
 cd port && TLG_LTO=OFF bash build.sh   # Linux: SDL3, Vulkan, FFmpeg, Boost, fmt, Zydis, glslang
-cd .. && ./tlg_launcher.sh             # or ./run_tlg.sh from a terminal
+cd .. && ./tlg_launcher_qt.sh         # Qt launcher; ./tlg_launcher.sh (Tk) or ./run_tlg.sh from a terminal
 ```
 
 On Windows, the build runs in MSYS2 CLANG64 ([`port/packaging/windows/README.md`](port/packaging/windows/README.md)). The workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) shows the full process on both platforms.

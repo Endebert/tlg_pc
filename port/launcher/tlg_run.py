@@ -164,6 +164,7 @@ DEFAULT_SETTINGS = {
     'skip_intro': True,             # skip the startup logos (~38 s; TLG_SKIP_INTRO wins)
     'resolution_width': 1920,      # screen snapshot for output_choice 'auto' (launcher Play)
     'resolution_height': 1080,
+    'output_choice': 'auto',       # Graphics > Rendering: startup resolution patch (resolution())
     'gpu_readbacks': '2',          # TLG_READBACKS: 2 precise (the game reads GPU compute results), 0 fast
     'stick_deadzone': 10,          # percent; runtime_pad.c TLG_STICK_DEADZONE
     'close_on_play': True,         # Qt launcher: close about 2 s after the game starts
@@ -199,7 +200,7 @@ def play_env(settings):
     defaults TLG_UPSCALER to off, which would otherwise override the ini); only when the ini
     has the key — an untouched section keeps the old shell-env behaviour."""
     env = {}
-    ini = read_ini(USER_DIR / 'tlg.ini')
+    ini = read_ini(user_dir() / 'tlg.ini')
     source = parse_source(settings.get('source_res'))
     if source:
         env['TLG_RENDER_RES'] = source

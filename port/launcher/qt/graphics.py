@@ -18,6 +18,7 @@ SETTING_ROWS = {
     's:vsync': ('vsync', 'switch', True),
     's:show_fps': ('show_fps', 'switch', True),
     's:frame_rate': ('frame_rate', 'combo', False),
+    's:output_choice': ('output_choice', 'combo', False),
     's:gpu_readbacks': ('gpu_readbacks', 'combo', False),
     's:native_audio': ('native_audio', 'switch', False),
     's:close_on_play': ('close_on_play', 'switch', False),
@@ -26,11 +27,15 @@ SETTING_ROWS = {
 }
 DISPLAY_MODES = ('Windowed', 'Borderless', 'Fullscreen')
 COMBO_VALUES = {'display_mode': DISPLAY_MODES, 'gpu_readbacks': ('0', '1', '2'),
-                'frame_rate': tuple(tlg_run.FRAME_RATES)}
-COMBO_LABEL = {'display_mode': '', 'gpu_readbacks': 'readbacks_', 'frame_rate': 'fps_'}
+                'frame_rate': tuple(tlg_run.FRAME_RATES),
+                'output_choice': tuple(tlg_run.OUTPUT_CHOICES)}
+COMBO_LABEL = {'display_mode': '', 'gpu_readbacks': 'readbacks_', 'frame_rate': 'fps_',
+               'output_choice': 'output_'}
 OVERLAY_IDS = tuple(i.id for i in backports_table.MENU if i.tab == 'Overlay')
 COLOR_IDS = tuple(i.id for i in backports_table.MENU if i.tab == 'Color')
 SECTIONS = (
+    # Rendering first: the upscaler and the two resolutions are what a player looks for.
+    ('gfx_sec_render', ('render:upscaler', 's:output_choice', 'render:preset', 'render:dlss_preset')),
     ('gfx_sec_image', ('s:display_mode', 's:vsync', 'menu:fsr1', 'menu:rcas', 'menu:rcas_strength',
                        'menu:cas', 'menu:cas_strength', 'menu:smaa')),
     ('gfx_sec_color', COLOR_IDS),

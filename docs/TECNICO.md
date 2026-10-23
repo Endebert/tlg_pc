@@ -315,8 +315,11 @@ Uso: `TLG_<OPÇÃO>=valor ./run_tlg.sh`. Os padrões abaixo já estão em `port/
 |---|---|---|
 | `TLG_READBACKS` | `2` (Precise) | sincronização GPU→CPU; o TLG precisa do 2 (`AsyncMap`); `1` = Relaxed (crash na entrada do gameplay) |
 | `TLG_GC_BUDGET_MB` | `5600` | orçamento do cache de texturas em MB (6 GB de VRAM); ex.: `7000` para 8 GB |
-| `TLG_UPSCALER` | `off` | `off`, `fsr3`, `taa`… (os upscalers do port de GoW3 causam tremor no TLG) |
+| `TLG_UPSCALER` | `off` | `off`, `dlss`, `fsr3`, `taa`…; os ganchos temporais do GoW3 já estão calibrados para o TLG (constantes de cena de 688 bytes, cor da cena B10G11R11), ver [upscaler.md](../port/docs/upscaler.md). No launcher: Gráficos → Renderização |
+| `TLG_UPSCALE_PRESET` | `0` | predefinição de render: `0` AA nativo, `1` Qualidade, `2` Equilibrado, `3` Desempenho, `4` Ultra (renderiza abaixo da saída e o upscaler reconstrói). No launcher: Gráficos → Renderização |
+| `TLG_DLSS_PRESET` | `auto` | modelo DLSS por modo: `auto` (padrão NVIDIA) ou `10`–`13` (J–M). No launcher: Gráficos → Renderização |
 | `TLG_JITTER` / `TLG_OBJECT_MOTION` | `0` / `0` | jitter de câmera e motion vectors para upscalers temporais |
+| `TLG_DUMP_TRIGGER` | — | ao criar o arquivo, grava os quadros do upscaler (entrada, motion vectors e saída, raw) em `TLG_DUMP_DIR`; `TLG_DUMP_FRAMES` (8) controla quantos |
 | `TLG_PIPELINE_BINARIES` | `0` | cache `VK_KHR_pipeline_binary` (trava no NVIDIA 595) |
 | `TLG_FPS` | `30` | taxa de quadros: `30` (como no PS4), `60` ou `unlocked`; patches só no eboot 1.03, ver [60fps.md](60fps.md) |
 | `TLG_SKIP_INTRO` | `1` | pula os logotipos de inicialização (cerca de 38 s até o menu); `0` mantém os do PS4 (launcher → Jogo) |
@@ -344,6 +347,7 @@ Diagnóstico com o jogo aberto: `kill -USR1 <pid>` grava a pilha de todas as thr
 
 ```
 tlg_launcher.sh      launcher gráfico (pt_BR/en_US): pasta do jogo, idiomas, vídeo, áudio, Jogar
+tlg_launcher_qt.sh   o mesmo launcher em Qt Quick (PySide6), o padrão dos pacotes
 scripts/install_desktop.sh  atalho no menu de aplicativos, com o ícone do port
 run_tlg.sh           roda direto pelo terminal (./run_tlg.sh [segundos]), com as mesmas configurações
 port/                loader + runtime + núcleo de vídeo (base gow3_pc, GPL-2.0; ver port/UPSTREAM.md)

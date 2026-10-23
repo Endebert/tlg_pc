@@ -6,6 +6,9 @@ every row here was checked against THIS port's sources (tests/test_backports_tab
   - MENU: tlg.ini keys parsed by gpu/shim/tlg_settings.cpp (Set) and shown by the in-game menu
     (gpu/shim/tlg_overlay.cpp); ranges and defaults from tlg_settings.h / tlg_graphics.h /
     tlg_perf_stats.h. They take effect on the next frame.
+  - RENDER: tlg.ini keys the game reads but its own menu does not offer (upscaler, render
+    preset, DLSS model). Restart required; tlg_run.play_env mirrors the upscaler into
+    TLG_UPSCALER, which the environment would otherwise pin to off.
   - DIAGNOSTICS: TLG_* environment switches the GPU code reads at start (texture_cache.h,
     vk_presenter.cpp, resource.h, emulator_settings.h). They are kept in settings.json and passed
     as TLG_<name>=0/1 only when the player changed them.
@@ -111,6 +114,51 @@ MENU = [
 
 BACKPORTS = []   # no TLG_BPnn switch exists in this port's GPU code
 
+# Rendering: tlg.ini keys the game reads but its own menu does not offer (the temporal upscalers
+# are deliberately not in the Insert menu, see gpu/shim/tlg_overlay.cpp), so the launcher owns
+# them. Restart required: the game reads them once at start and TLG_UPSCALER in the environment
+# (tlg_run.play_env mirrors the key) wins over the file.
+_UPSCALER_CHOICES = (
+    ('off', 'Off (game as on PS4)', 'Desligado (jogo como no PS4)'),
+    ('fsr3', 'FSR 3.1', 'FSR 3.1'),
+    ('taa', 'TAA (anti-aliasing, no upscale)', 'TAA (antisserrilhado, sem ampliação)'),
+    ('dlss', 'DLSS (NVIDIA)', 'DLSS (NVIDIA)'))
+_RENDER_PRESET_CHOICES = (
+    ('0', 'Native AA', 'AA nativo'),
+    ('1', 'Quality', 'Qualidade'),
+    ('2', 'Balanced', 'Equilibrado'),
+    ('3', 'Performance', 'Desempenho'),
+    ('4', 'Ultra Performance', 'Ultra desempenho'))
+_DLSS_PRESET_CHOICES = (
+    ('auto', 'Auto (NVIDIA default per mode)', 'Automático (padrão NVIDIA por modo)'),
+    ('10', 'J', 'J'), ('11', 'K', 'K'), ('12', 'L', 'L'), ('13', 'M', 'M'))
+
+
+def _render(key, env, default, name, what, choices):
+    # pass_env: TLG_UPSCALER would otherwise be pinned to off by tlg_run.DEFAULT_ENV, and the
+    # env is what the game reads first; a TLG_* already in the environment still wins.
+    return _make('render:' + key, 'render', key, env, 'choice', default, name, what,
+                 choices=choices, pass_env=True)
+
+
+RENDER = [
+    _render('upscaler', 'TLG_UPSCALER', 'off', ('Upscaler', 'Escalador'),
+            ('Rebuilds the 3D image every frame: DLSS needs an NVIDIA RTX card. '
+             'The game\'s own menu does not offer it.',
+             'Reconstrói a imagem 3D a cada quadro: DLSS precisa de placa NVIDIA RTX. '
+             'O menu do jogo não oferece.'), _UPSCALER_CHOICES),
+    _render('preset', 'TLG_UPSCALE_PRESET', '0', ('Render preset', 'Predefinição de render'),
+            ('Renders below the output size and lets the upscaler rebuild the detail; '
+             'Native AA renders at the output size. TAA always uses Native AA.',
+             'Renderiza abaixo do tamanho de saída e deixa o ampliador reconstruir o detalhe; '
+             'AA nativo renderiza no tamanho de saída. O TAA usa sempre AA nativo.'),
+            _RENDER_PRESET_CHOICES),
+    _render('dlss_preset', 'TLG_DLSS_PRESET', 'auto', ('DLSS model preset', 'Predefinição do modelo DLSS'),
+            ('Which NVIDIA model runs each DLSS mode; Auto is the driver default.',
+             'Qual modelo NVIDIA roda em cada modo DLSS; Automático é o padrão do driver.'),
+            _DLSS_PRESET_CHOICES),
+]
+
 # Start-up switches (environment, read once when the game starts). Defaults: the value the game
 # gets from this port (tlg_run.DEFAULT_ENV or the code's own fallback).
 DIAGNOSTICS = [
@@ -148,7 +196,7 @@ DIAGNOSTICS = [
 ]
 
 ADVANCED = advanced_table.build(_make)
-ITEMS = MENU + BACKPORTS + DIAGNOSTICS + ADVANCED
+ITEMS = MENU + RENDER + BACKPORTS + DIAGNOSTICS + ADVANCED
 PREFIX = 'TLG_'
 
 

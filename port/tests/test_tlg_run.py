@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 if str(ROOT / 'launcher') not in sys.path:
     sys.path.insert(0, str(ROOT / 'launcher'))
@@ -76,24 +77,24 @@ class SummaryLineTests(unittest.TestCase):
 class PlayEnvTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.saved_user = t.USER_DIR
-        t.USER_DIR = Path(self.tmp.name)
-
-    def tearDown(self):
-        t.USER_DIR = self.saved_user
-        self.tmp.cleanup()
+        # play_env reads the data folder's tlg.ini through user_dir(), which TLG_USER_DIR moves.
+        patcher = mock.patch.dict(os.environ, {'TLG_USER_DIR': self.tmp.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.folder = Path(self.tmp.name)
 
     def test_never_sets_the_live_output(self):
         # TLG_OUTPUT_RES arms the artifact-prone live resample path: the startup patch owns
         # the output, so the env must never carry it.
-        Path(t.USER_DIR, 'tlg.ini').write_text('upscaler=taa\noutput_res=2560x1440\n')
+        (self.folder / 'tlg.ini').write_text('upscaler=taa\noutput_res=2560x1440\n')
         env = t.play_env({'output_choice': '2560x1440'})
         self.assertNotIn('TLG_OUTPUT_RES', env)
         self.assertNotIn('TLG_RENDER_RES', env)  # no custom source: no compatibility session
         self.assertEqual(env.get('TLG_UPSCALER'), 'taa')
 
     def test_custom_source_becomes_render_res(self):
-        Path(t.USER_DIR, 'tlg.ini').write_text('upscaler=dlss\n')
+        (self.folder / 'tlg.ini').write_text('upscaler=dlss\n')
         env = t.play_env({'source_res': '1706x960'})
         self.assertEqual(env.get('TLG_RENDER_RES'), '1706x960')
 

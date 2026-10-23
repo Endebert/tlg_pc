@@ -139,7 +139,7 @@ loader, Zydis, fmt and FFmpeg; `port/packaging/linux/build_deps.sh` builds the n
 but runs no tests.
 
 Two launch pipelines exist and are not interchangeable: the TLG player path
-(`tlg_launcher.sh` / `run_tlg.sh` → `tlg_run.py` → `tlg_patches.py`) and a gow3_pc-inherited
+(`tlg_launcher_qt.sh` / `tlg_launcher.sh` / `run_tlg.sh` → `tlg_run.py` → `tlg_patches.py`) and a gow3_pc-inherited
 generic path (`port/run.sh` / `port/run.py` → `patches.py`, `mods.py`). `patches.py` only knows
 God of War III, so for this game it writes an empty patch file.
 
