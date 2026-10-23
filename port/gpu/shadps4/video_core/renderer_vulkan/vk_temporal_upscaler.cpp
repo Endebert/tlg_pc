@@ -20,6 +20,7 @@
 #include "tlg_toggles.h"
 #include "ffx_vk_portable.h"
 #include "video_core/host_shaders/upscale_merge_comp.h"
+#include "video_core/host_shaders/upscale_merge_b10g11r11_comp.h"
 #include "video_core/host_shaders/upscale_reactive_comp.h"
 #include "video_core/host_shaders/taa_comp.h"
 #include "video_core/host_shaders/taa_sharpen_comp.h"
@@ -196,7 +197,7 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
     const char* env = std::getenv("TLG_UPSCALER");
     enabled = !(env && std::strcmp(env, "none") == 0);
     if (const char* hash = std::getenv("TLG_UPSCALE_BEFORE_CS")) {
-        trigger_hash = std::strtoull(hash, nullptr, 16);
+        trigger_hashes.assign(1, std::strtoull(hash, nullptr, 16));
     }
     if (const char* hash = std::getenv("TLG_UI_TRIGGER_VS")) {
         ui_trigger_vs = std::strtoull(hash, nullptr, 16);
@@ -231,10 +232,15 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
         enabled = false;
     }
     if (enabled) {
-        std::printf("Upscaler: FSR 3.1 available (%s) on scene color before compute shader "
-                    "%016llx\n",
+        std::string hashes;
+        for (const u64 hash : trigger_hashes) {
+            char text[20];
+            std::snprintf(text, sizeof(text), " %016llx", static_cast<unsigned long long>(hash));
+            hashes += text;
+        }
+        std::printf("Upscaler: FSR 3.1 available (%s) on scene color before compute%s\n",
                     TlgSettings::Get().upscaler != TlgSettings::UpscalerOff ? "on" : "off",
-                    static_cast<unsigned long long>(trigger_hash));
+                    hashes.c_str());
     }
 }
 
@@ -378,7 +384,7 @@ bool TemporalUpscaler::OnFrameStart() {
 }
 
 void TemporalUpscaler::OnDispatch(u64 cs_hash) {
-    if (cs_hash != trigger_hash) {
+    if (std::find(trigger_hashes.begin(), trigger_hashes.end(), cs_hash) == trigger_hashes.end()) {
         return;
     }
     if (done_this_frame || failed || Scaled()) {
@@ -408,6 +414,12 @@ bool TemporalUpscaler::EnsureResources(u32 w, u32 h, u32 ow, u32 oh, bool hdr) {
         std::printf("TAA: remove TLG_RENDER_RES to use native-resolution TAA\n");
         return false;
     }
+    // Every dispatch path passes through here: publish what this frame really rebuilds, so the
+    // menu can show the render size next to the output size (equal when nothing is scaled).
+    TlgSettings::Get().upscale_in_width = int(w);
+    TlgSettings::Get().upscale_in_height = int(h);
+    TlgSettings::Get().upscale_out_width = int(ow);
+    TlgSettings::Get().upscale_out_height = int(oh);
     if (resources_ready && w == width && h == height && ow == out_width && oh == out_height &&
         hdr == context_hdr && use_fsr4 == resources_fsr4 && use_taa == resources_taa) {
         return true;
@@ -633,6 +645,7 @@ void TemporalUpscaler::CreatePipelines() {
         }));
     }
     merge_pipeline = compute(UPSCALE_MERGE_COMP, *merge_pipeline_layout);
+    merge_pipeline_b10g11r11 = compute(UPSCALE_MERGE_B10G11R11_COMP, *merge_pipeline_layout);
     storage_layout(3, reactive_desc_layout, reactive_pipeline_layout, 3 * sizeof(float));
     reactive_pipeline = compute(UPSCALE_REACTIVE_COMP, *reactive_pipeline_layout);
     storage_layout(2, taa_sharpen_desc_layout, taa_sharpen_pipeline_layout, sizeof(float));
@@ -1038,15 +1051,15 @@ void TemporalUpscaler::Run() {
     const bool reduced = ReducedScene(color) && scene_targets.EligibleScene(depth);
     const u32 w = reduced ? scene_targets.Size().width : ow;
     const u32 h = reduced ? scene_targets.Size().height : oh;
-    if (color.info.pixel_format != vk::Format::eR16G16B16A16Sfloat ||
+    if (!SceneColorFormat(color.info.pixel_format) ||
         depth.info.size.width != ow || depth.info.size.height != oh ||
         !(color.usage_flags & vk::ImageUsageFlagBits::eStorage)) {
-        UpscalerDebug("run.format", int(color.info.pixel_format != vk::Format::eR16G16B16A16Sfloat) |
+        UpscalerDebug("run.format", int(!SceneColorFormat(color.info.pixel_format)) |
                                         int(depth.info.size.width != ow) << 1 |
                                         int(depth.info.size.height != oh) << 2 |
                                         int(!(color.usage_flags & vk::ImageUsageFlagBits::eStorage)) << 3,
-                      "rgba16f=%d depth_w=%d depth_h=%d no_storage=%d",
-                      int(color.info.pixel_format == vk::Format::eR16G16B16A16Sfloat),
+                      "hdr=%d depth_w=%d depth_h=%d no_storage=%d",
+                      int(SceneColorFormat(color.info.pixel_format)),
                       int(depth.info.size.width != ow), int(depth.info.size.height != oh),
                       int(!(color.usage_flags & vk::ImageUsageFlagBits::eStorage)));
         return;
@@ -1062,7 +1075,7 @@ void TemporalUpscaler::Run() {
     const auto depth_view =
         CachedView(depth, depth_format, vk::ImageAspectFlagBits::eDepth);
     const auto color_view =
-        CachedView(color, vk::Format::eR16G16B16A16Sfloat, vk::ImageAspectFlagBits::eColor);
+        CachedView(color, color.info.pixel_format, vk::ImageAspectFlagBits::eColor);
 
     scheduler.EndRendering();
     runtime.Transit(&depth, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits2::eComputeShader,
@@ -1219,6 +1232,17 @@ void TemporalUpscaler::Run() {
         runtime.Transit(&color, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits2::eComputeShader,
                         vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite);
         runtime.FlushBarriers();
+        // TLG_DUMP_TRIGGER: the upscaler's own input and result, before the merge writes it back.
+        if (const int dump = DumpFrame(); dump >= 0) {
+            const char* in_format = color.info.pixel_format ==
+                                            vk::Format::eB10G11R11UfloatPack32
+                                        ? "b10g11r11"
+                                        : "rgba16f";
+            DumpImages(instance, scheduler, cmdbuf, dump,
+                       {{color.GetImage(), ow, oh, 4, "input", in_format},
+                        {vk::Image(motion_image), w, h, 4, "motion", "rg16f"},
+                        {vk::Image(output_image), ow, oh, 8, "output", "rgba16f"}});
+        }
         const vk::DescriptorImageInfo out_info{.imageView = *output_view,
                                                .imageLayout = vk::ImageLayout::eGeneral};
         const vk::DescriptorImageInfo scene_info{.imageView = color_view,
@@ -1262,7 +1286,9 @@ void TemporalUpscaler::Run() {
                              ? 1
                          : debug_view == TlgSettings::DebugMotion ? 2
                                                                  : 0;
-        cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute, *merge_pipeline);
+        const bool b10_scene = color.info.pixel_format == vk::Format::eB10G11R11UfloatPack32;
+        cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute,
+                            b10_scene ? *merge_pipeline_b10g11r11 : *merge_pipeline);
         cmdbuf.pushDescriptorSetKHR(vk::PipelineBindPoint::eCompute, *merge_pipeline_layout, 0,
                                     writes);
         cmdbuf.pushConstants(*merge_pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0,

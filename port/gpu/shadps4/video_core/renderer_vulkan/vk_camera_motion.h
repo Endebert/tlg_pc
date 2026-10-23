@@ -69,7 +69,7 @@ public:
     void RecordMotion(vk::CommandBuffer cmdbuf, vk::ImageView depth_view, vk::ImageView motion_view,
                       u32 width, u32 height);
 
-    /// A bound constant buffer of 864 bytes: checks the scene constant signature.
+    /// A bound constant buffer of 688 bytes: checks the scene constant signature.
     void OnConstants(const float* data);
 
     /// The G-buffer pass (5+ color targets): its depth is the scene depth.

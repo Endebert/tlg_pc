@@ -98,6 +98,11 @@ struct Values {
     std::atomic<bool> fsr4_auto_exposure{true};
     std::atomic<bool> fsr4_invert_jitter{false};
     std::atomic<int> active_render_width{1920}, active_render_height{1080};
+    /// Sizes the temporal upscaler actually dispatched with (EnsureResources): the scene render
+    /// size it rebuilds and the output it is rebuilt to. Equal when no internal scaling runs,
+    /// 0 while no dispatch has happened yet. The menu's "Render resolution" row reads them.
+    std::atomic<int> upscale_in_width{0}, upscale_in_height{0};
+    std::atomic<int> upscale_out_width{0}, upscale_out_height{0};
     std::atomic<int> output_res{OutputDefault}; ///< index into OutputWidths
     /// Live resolution and preset changes (run.sh): 0 off by default (startup patch, fastest
     /// on the Steam Deck and older GPUs), -1 auto (strong discrete GPUs), 1 on. On restart.

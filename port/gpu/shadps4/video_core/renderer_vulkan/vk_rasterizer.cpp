@@ -276,12 +276,13 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     if (upscaler->Enabled() && cb_descs[0].first) {
         upscaler->OnColorTarget(cb_descs[0].first);
     }
-    // tlg: scene color: a full-size RGBA16F target drawn with the scene depth.
+    // tlg: scene color: a full-size HDR target drawn with the scene depth. TLG's composite
+    // writes three targets where the two-target rule was tuned, so the count allows one more.
     if (upscaler->Enabled() && db_desc.first && db_desc.first == camera_motion->Depth() &&
-        cb_descs[0].first && std::popcount(key.mrt_mask) <= 2) {
+        cb_descs[0].first && std::popcount(key.mrt_mask) <= 3) {
         const auto& color = texture_cache.GetImage(cb_descs[0].first);
         const auto& depth = texture_cache.GetImage(db_desc.first);
-        if (color.info.pixel_format == vk::Format::eR16G16B16A16Sfloat &&
+        if (SceneColorFormat(color.info.pixel_format) &&
             color.info.size.width == depth.info.size.width &&
             color.info.size.height == depth.info.size.height) {
             upscaler->OnSceneColor(cb_descs[0].first);
@@ -997,21 +998,28 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     }
     const auto& regs = Regs();
     // tlg: the pass copying a finished frame to a display buffer; the previous draw's
-    // target is that frame.
+    // target is that frame. TLG draws the finished frame three times into the same buffer
+    // and rotates buffers every frame, so only the first draw of a buffer is that pass:
+    // the repeats would restart the frame and drop the camera history mid-frame.
     if (camera_motion->Enabled() && regs.color_buffers[0] &&
         FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address())) {
+        const VAddr display_address = regs.color_buffers[0].Address();
+        const bool boundary = display_address != last_display_address;
+        last_display_address = display_address;
         scene_started = false;
-        camera_motion->OnDisplayPass(cb_descs[0].first);
-        if (upscaler->OnFrameStart()) {
-            object_motion->InvalidateHistory();
-            camera_motion->InvalidateHistory();
+        if (boundary) {
+            camera_motion->OnDisplayPass(cb_descs[0].first);
+            if (upscaler->OnFrameStart()) {
+                object_motion->InvalidateHistory();
+                camera_motion->InvalidateHistory();
+            }
+            camera_motion->SetJitter(upscaler->Jitter());
+            object_motion->OnFrameStart();
+            NoteFrameStart();
+            static const char* scene_debug = std::getenv("TLG_SCENE_DEBUG");
+            scene_debug_frame = scene_debug && std::remove(scene_debug) == 0;
+            scene_targets->debug = scene_debug_frame;
         }
-        camera_motion->SetJitter(upscaler->Jitter());
-        object_motion->OnFrameStart();
-        NoteFrameStart();
-        static const char* scene_debug = std::getenv("TLG_SCENE_DEBUG");
-        scene_debug_frame = scene_debug && std::remove(scene_debug) == 0;
-        scene_targets->debug = scene_debug_frame;
     }
     bind_prepared = used_prepared;
     motion_draw = pipeline->GetGraphicsKey().motion_vectors;
@@ -2095,7 +2103,7 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                                      reinterpret_cast<const void*>(ring->address), ring->size);
             }
             if (!desc.IsSpecial()) {
-                if (ring->size == 864 && gbuffer_draw &&
+                if (ring->size == 688 && gbuffer_draw &&
                     memory->IsValidGpuMapping(ring->address, 0)) {
                     camera_motion->OnConstants(reinterpret_cast<const float*>(ring->address));
                 }
@@ -2156,7 +2164,7 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
         } else {
             const auto vsharp =
                 prepared ? prepared->buffer_sharps[buffer_index] : desc.GetSharp(stage);
-            if (vsharp.GetSize() == 864 && gbuffer_draw &&
+            if (vsharp.GetSize() == 688 && gbuffer_draw &&
                 memory->IsValidGpuMapping(vsharp.base_address, 0)) {
                 camera_motion->OnConstants(reinterpret_cast<const float*>(vsharp.base_address));
             }

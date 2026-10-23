@@ -91,7 +91,25 @@ O jogo já é jogável; o que falta é jogar adiante corrigindo o que aparecer, 
 - [ ] **Cache de pipelines na NVIDIA.** Investigar o crash do `VK_KHR_pipeline_binary`. Baixa prioridade.
 - [ ] **Build e pacote para Windows.** O código herdado já suporta MSYS2/clang64. Dias.
 - [ ] **macOS Apple Silicon.** Rosetta 2 com AVX, TLS sem `gs`, MoltenVK. Semanas a meses ([issue #1](https://github.com/HayatoG/tlg_pc/issues/1)).
-- [ ] **FSR ou DLSS integrados ao pipeline do TLG.** Usar o SMAA/TAA do próprio jogo, não o gancho do GoW3. Opcional.
+- [ ] **Ampliar de 1080p para a resolução de saída com o upscaler (1080p → 1440p no DLSS).**
+  A saída hoje é um patch no eboot: o jogo já renderiza no tamanho de saída, `Run()` recebe
+  `w = ow` e o DLSS roda em DLAA (qualidade 0), então a predefinição não muda nada. O caminho
+  é manter o patch e renderizar a cena em 1080p no proxy — `Run()` passaria
+  `1920x1080 -> 2560x1440`, com a UI desenhada por cima em 1440p. Bloqueio: `SceneTargets` não
+  sabe o tamanho real do guest. `SizeDivisor` e `EligibleScene` (`vk_scene_resolution.cpp`)
+  comparam com 1920x1080 fixo; `Reduced()` compara com `Size{}` (também 1920x1080, então uma
+  cena 1080p conta como não reduzida); `target_scale` (`vk_rasterizer.cpp`) divide por 1920.
+  Passar o tamanho renderizado do guest (o launcher já o sabe, `resolution()`) e auditar os
+  outros literais 1920/1080 (`RenderTarget`, `JitterPhases`, `SceneMipBias`, `NativeViewport`,
+  `UiComposition::Scale`, `vk_presenter`); o risco está em `target_scale`, que alimenta a
+  conversão de coordenadas dos shaders. A rota alternativa (jogo em 1080p e `output_res`
+  ampliando para 1440p) ficou desligada no commit e24c0cf por artefatos. Ver
+  [upscaler.md](../port/docs/upscaler.md). Uma a duas semanas.
+- [x] **FSR ou DLSS integrados ao pipeline do TLG** (23/10). O plano original era usar o
+  SMAA/TAA do próprio jogo; na prática o gancho temporal do GoW3 foi calibrado para o TLG
+  (constantes de cena de 688 bytes, cor da cena B10G11R11, um único limite de quadro por
+  imagem) e `TLG_UPSCALER=dlss` avalia o DLSS a cada quadro, sem mudança de FPS. Ver
+  [upscaler.md](../port/docs/upscaler.md).
 
 ## Referências
 

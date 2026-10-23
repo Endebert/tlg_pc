@@ -9,7 +9,12 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, rgba16f) uniform readonly image2D upscaled;
+#ifdef SCENE_B10G11R11
+// tlg: TLG's scene color is B10G11R11 (no alpha channel to keep).
+layout(binding = 1, r11f_g11f_b10f) uniform writeonly image2D scene;
+#else
 layout(binding = 1, rgba16f) uniform image2D scene;
+#endif
 layout(binding = 2, r8) uniform readonly image2D reactive;
 layout(binding = 3) uniform texture2D motion;  // render size, pixels
 layout(binding = 4) uniform texture2D objects; // render size, b = object vector written
@@ -23,7 +28,9 @@ void main() {
     if (any(greaterThanEqual(pixel, imageSize(scene)))) {
         return;
     }
+#ifndef SCENE_B10G11R11
     const vec4 original = imageLoad(scene, pixel);
+#endif
     vec3 color = imageLoad(upscaled, pixel).rgb;
     if (mode == 1) {
         const float mask = imageLoad(reactive, min(pixel * imageSize(reactive) / imageSize(scene), imageSize(reactive) - 1)).r;
@@ -37,5 +44,9 @@ void main() {
         const float luma = dot(min(color, vec3(1.0)), vec3(0.3, 0.6, 0.1));
         color = vec3(luma * 0.3) + vec3(clamp(abs(mv) / 8.0, 0.0, 1.0), object ? 0.6 : 0.0);
     }
+#ifdef SCENE_B10G11R11
+    imageStore(scene, pixel, vec4(color, 1.0));
+#else
     imageStore(scene, pixel, vec4(color, original.a));
+#endif
 }

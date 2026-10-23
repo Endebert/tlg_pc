@@ -296,3 +296,83 @@ pass0_post, проходы модели 1..12 (за каждым `_post`, обн
 **Поправка к A/B выше («кадр упирается в CPU»).** Те замеры шли, пока 12 зависших процессов
 shadPS4 занимали по ядру. На свободной системе: «host copies» 1.6%, ожидание GPU ~41% — кадр
 упирается в GPU, так что async compute для FSR снова имеет смысл.
+
+## 2026-10-23: TLG dispatched the upscaler once per run (display pass ×3)
+
+TLG draws the finished frame **three times into the same display buffer** and rotates the
+buffer every frame (triple buffering: `0x1086360000`, `0x10871c0000`, `0x1085500000`, …).
+`Rasterizer::DrawRecord` treated every draw whose color buffer is a registered display buffer
+as the frame boundary, so `CameraMotion::OnDisplayPass` and `TemporalUpscaler::OnFrameStart`
+ran three times per frame.
+
+The second and third calls were destructive: the first had already cleared `frame_has_camera`,
+so `if (!frame_has_camera) InvalidateHistory()` ran on them and set `current.valid =
+previous.valid = false`. The next frame's `OnConstants` then copied the invalid camera into
+`previous`, and `Ready()` = `current.valid && previous.valid && depth_id` stayed false
+forever. `OnDispatch` therefore returned at the guard on every frame: probes showed
+`Run()` called **once in 14 s** while `OnDispatch` fired 2930 times, and `Ready()` reporting
+`cur=1 prev=0 depth=1`. The upscaler (DLSS or FSR) evaluated at most once per run.
+
+Fix: `Rasterizer::last_display_address` — only the first draw of a display buffer is the
+boundary; the repeats still clear `scene_started` but skip the frame-start work. Draws that
+target a *different* buffer remain boundaries, so a game that copies into two buffers per
+frame is unaffected.
+
+After the fix, with `TLG_UPSCALER=dlss`:
+
+- the guard reports `no_scene=1 no_camera=0` (camera ready) and `dispatch.run` every frame;
+- `TLG_DUMP_TRIGGER` produces its frames (it polls once per 30 `Run()` calls, so files prove
+  `Run()` is running) — it now also dumps from `Run()`, the native path, not only `RunScaled`;
+- DLSS input vs output of the same frame: 0.3% of channels differ by >0.01, max 0.15, means
+  unchanged (0.0404 → 0.0402 R) — the temporal result, not a passthrough;
+- presented frame with DLSS on vs off: ~1% of bytes differ by >8, only on the high-contrast
+  water and rock edges, flat dark areas identical; 58.6 FPS, unchanged.
+
+`TLG_UPSCALER=dlss` creates the NGX feature at render size (quality 0 = DLAA, preset hint 12)
+and evaluates every frame; `TLG_UPSCALER_DEBUG=1` prints `dispatch.guard` / `dispatch.run` /
+`run.setup` on state changes.
+
+## 2026-10-23: "Render resolution" row in the menu, and why Ultra Performance did not scale
+
+The menu's **Image → Information** section showed only the game image and the window, so there
+was no way to see whether the temporal upscaler was actually rebuilding a smaller image. Two
+readouts of the same numbers, both `render -> output` in pixels:
+
+- **Render resolution** (`Resolução de renderização`) row in **Image → Information**, `off`
+  while no dispatch has happened;
+- the **Upscaler** item of the performance overlay (F10), which now reads
+  `DLSS 2560x1440->2560x1440` — visible during play, and with `TLG_SHOW_FPS=1` from the start.
+
+Both read four atomics (`upscale_in_width/height`, `upscale_out_width/height`) published by
+`TemporalUpscaler::EnsureResources`, which every dispatch path passes through — `Run()`,
+`RunScaled()` and `OnDispatch()` — so they report what the frame really used, not what the
+preset asked for.
+
+**It immediately showed the real reason Ultra Performance did nothing.** With
+`upscaler=dlss`, `preset=4`, `dlss_preset=12` and the launcher's 2560x1440 output choice, the
+run log says:
+
+```
+Output resolution: 1920x1080 (live)
+Scene resolution: raster 640x360, half-resolution targets 320x180, UI 1920x1080 (live)
+DLSS: DLSS 2560x1440 -> 2560x1440, quality 0, preset 12, HDR input
+```
+
+The preset *was* applied — the scene targets were sized to 640x360 — but DLSS still received
+2560x1440 and ran quality 0 (DLAA, `vk_dlss.h`: 0 = DLAA … 4 = Ultra Performance), so nothing
+was upscaled and the frame rate did not move.
+
+The reduced-scene path is hardcoded to the game's native 1080p in two places:
+
+- `SceneTargets::EligibleScene` (`vk_scene_resolution.cpp`) requires
+  `size == 1920x1080`, so `TemporalUpscaler::Run()` computes
+  `reduced = ReducedScene(color) && EligibleScene(depth)` as false and falls back to
+  `w = ow` — the output size;
+- `SizeDivisor` (same file) returns 0 for any size that is neither 1920x1080 nor 960x540, so
+  `Eligible()` is false and the rasterizer never marks a pass reduced either
+  (`reduced-size draws 0/frame of 0 in the scene` in the frame stats).
+
+A startup resolution patch (the launcher's output choice, 2560x1440 here) therefore disables
+internal resolution scaling entirely: the scene renders at full size and the upscaler runs as
+DLAA. Until those two checks learn the game's actual render size, verify upscaling with
+`output_choice = 1920x1080` (no patch), where `EligibleScene` still matches.

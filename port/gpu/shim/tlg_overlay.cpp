@@ -355,6 +355,15 @@ std::string OverlayText() {
     sample.fps = frame_ms_avg > 0.0f ? 1000.0f / frame_ms_avg : 0.0f;
     sample.frame_ms = frame_ms_avg;
     sample.upscaler = UpscalerLabel(s.upscaler);
+    // The render size the upscaler rebuilt and the output it produced, so the corner overlay
+    // shows the internal resolution without opening the menu. Equal means no scaling ran.
+    if (const int rw = s.upscale_in_width, rh = s.upscale_in_height;
+        rw > 0 && s.upscale_out_width > 0) {
+        const int ow = s.upscale_out_width, oh = s.upscale_out_height;
+        char sizes[48];
+        std::snprintf(sizes, sizeof(sizes), " %dx%d->%dx%d", rw, rh, ow, oh);
+        sample.upscaler += sizes;
+    }
     return P::Format(sample, items, s.overlay_layout == 0);
 }
 
@@ -428,6 +437,16 @@ void ImageTab() {
         char text[96];
         std::snprintf(text, sizeof(text), "%d x %d", iw, ih);
         InfoRow(TL("Game image", "Imagem do jogo"), text);
+        // What the temporal upscaler really rebuilt this frame: the render size it started from
+        // and the output it produced. Equal means no internal scaling ran (DLAA, or upscaling off).
+        const int rw = s.upscale_in_width, rh = s.upscale_in_height;
+        const int ow = s.upscale_out_width, oh = s.upscale_out_height;
+        if (rw > 0 && ow > 0) {
+            std::snprintf(text, sizeof(text), "%d x %d -> %d x %d", rw, rh, ow, oh);
+        } else {
+            std::snprintf(text, sizeof(text), "%s", TL("off", "desligado"));
+        }
+        InfoRow(TL("Render resolution", "Resolução de renderização"), text);
         std::snprintf(text, sizeof(text), "%d x %d", ww, wh);
         InfoRow(TL("Windowed", "Janela"), text);
         InfoRow("FSR 1", !s.fsr1 ? TL("off", "desligado") : upscaling ? TL("active", "ativo") : TL("no effect (image not smaller than window)", "sem efeito (imagem não é menor que a janela)"));

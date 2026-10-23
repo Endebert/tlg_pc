@@ -219,23 +219,49 @@ void CameraMotion::RecordMotion(vk::CommandBuffer cmdbuf, vk::ImageView depth_vi
 }
 
 void CameraMotion::OnConstants(const float* data) {
-    // Scene constants: far plane 3000, 1/far, and the render size.
-    if (data[0] != 3000.0f || data[4] < 64.0f || data[5] < 64.0f ||
-        std::abs(data[1] * data[0] - 1.0f) > 1e-3f) {
+    // tlg: the scene constants are the 688-byte block every pass binds. Column-major, and
+    // the three matrices are consistent (VP = P * V to 1e-5): view-projection at 4, view at
+    // 20 with the translation in the last column, projection at 36.
+    const float* projection = data + 36;
+    // Only a projection has px, py > 0 and clip.w = -view.z in the last column.
+    if (projection[0] <= 0.0f || projection[5] <= 0.0f ||
+        std::abs(projection[11] + 1.0f) > 1e-4f) {
         return;
     }
     if (frame_has_camera) {
         return; // the first one of a frame is the main camera
     }
     previous = current;
-    std::memcpy(current.view.data(), data + 8, 12 * sizeof(float));
-    std::memcpy(current.inv_view.data(), data + 180, 12 * sizeof(float));
-    current.proj = {data[52], data[57], data[62], data[63]};
-    current.valid = current.proj[0] != 0.0f && current.proj[1] != 0.0f;
-    const std::array<u32, 2> size{u32(data[4]), u32(data[5])};
-    if (size != render_size) {
-        std::printf("Camera motion: scene render size %ux%u\n", size[0], size[1]);
-        render_size = size;
+    // The game's view space has z < 0 in front (clip.w = -z); the motion shader works with
+    // z > 0 in front, so z and the translation along it are negated on the way in.
+    constexpr float flip[3] = {1.0f, 1.0f, -1.0f};
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            current.view[row * 4 + column] = flip[column] * data[20 + row * 4 + column];
+        }
+        current.view[row * 4 + 3] = flip[row] * data[32 + row];
+    }
+    // Inverse of [A | t] with an orthonormal A: [A^T | -A^T t].
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            current.inv_view[row * 4 + column] = current.view[column * 4 + row];
+        }
+        float shift = 0.0f;
+        for (int k = 0; k < 3; ++k) {
+            shift += current.view[k * 4 + row] * current.view[k * 4 + 3];
+        }
+        current.inv_view[row * 4 + 3] = -shift;
+    }
+    // depth = zs + zo / z with z > 0 in front: zs = -P22, zo = P23 (both from P).
+    current.proj = {projection[0], projection[5], -projection[10], projection[14]};
+    current.valid = true;
+    if (depth_id) {
+        const auto& depth = texture_cache.GetImage(depth_id);
+        const std::array<u32, 2> size{depth.info.size.width, depth.info.size.height};
+        if (size != render_size) {
+            std::printf("Camera motion: scene render size %ux%u\n", size[0], size[1]);
+            render_size = size;
+        }
     }
     frame_has_camera = true;
 }

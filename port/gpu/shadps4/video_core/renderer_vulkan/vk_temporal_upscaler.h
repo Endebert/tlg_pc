@@ -39,6 +39,13 @@ class Runtime;
 class CameraMotion;
 class SceneTargets;
 
+/// The HDR formats a scene color can have: TLG's B10G11R11 (no alpha, so the merge shader
+/// has a variant), RGBA16F otherwise.
+inline bool SceneColorFormat(vk::Format format) {
+    return format == vk::Format::eR16G16B16A16Sfloat ||
+           format == vk::Format::eB10G11R11UfloatPack32;
+}
+
 class TemporalUpscaler {
 public:
     TemporalUpscaler(const Instance& instance, Scheduler& scheduler,
@@ -50,7 +57,7 @@ public:
         return enabled;
     }
 
-    /// A draw into a full-size RGBA16F target with the scene depth: the scene color.
+    /// A draw into a full-size HDR target with the scene depth: the scene color.
     void OnSceneColor(VideoCore::ImageId color);
 
     /// A blended (transparent) draw into the scene color that is not a full-screen pass: the
@@ -194,7 +201,10 @@ private:
 
     bool enabled = false;
     bool failed = false;
-    u64 trigger_hash = 0x9a9cf8a9;
+    /// tlg: the compute dispatches of TLG's post chain that run after the scene color is
+    /// final and before the composite reading it (docs/upscaler.md); the first one of a
+    /// frame is where the upscaler runs. TLG_UPSCALE_BEFORE_CS replaces the list with one.
+    std::vector<u64> trigger_hashes{0xb3400085, 0x1930bb5e, 0xa78f138e, 0x3face583};
     VideoCore::ImageId scene_color{};
     bool done_this_frame = false;
     u32 preset_file_frames = 0; ///< TLG_PRESET_FILE polling
@@ -267,6 +277,8 @@ private:
     vk::UniqueDescriptorSetLayout merge_desc_layout;
     vk::UniquePipelineLayout merge_pipeline_layout;
     vk::UniquePipeline merge_pipeline;
+    /// tlg: the same merge for TLG's B10G11R11 scene color (no alpha to keep).
+    vk::UniquePipeline merge_pipeline_b10g11r11;
     std::array<VideoCore::UniqueImage, 2> taa_history;
     std::array<vk::UniqueImageView, 2> taa_history_views;
     u32 taa_next = 0;
